@@ -6,6 +6,3 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Main executable
 add_executable(main main.cpp)
-
-# Test executable
-add_executable(test test_main_numerico.cpp)
