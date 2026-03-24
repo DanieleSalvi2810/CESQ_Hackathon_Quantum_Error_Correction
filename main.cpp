@@ -1,8 +1,15 @@
 #include <cstdlib>
 #include <stdio.h>
 
-#define N 10
+#define N 6
 #define N_SYNDROME_ROWS (N / 2)
+
+
+int error_matrix[N][N];
+int syndrome_plaquette[N_SYNDROME_ROWS][N];
+int syndrome_cross[N_SYNDROME_ROWS][N];
+const double px = 0.1;
+const double pz = 0.1;
 
 int wrap_index(int index) {
     if (index < 0) {
@@ -14,31 +21,19 @@ int wrap_index(int index) {
     return index;
 }
 
-int* get_syndrome(
-    int syndrome_plaquette[N_SYNDROME_ROWS][N],
-    int syndrome_cross[N_SYNDROME_ROWS][N],
-    int i,
-    int j
-) {
-    const int row = wrap_index(i);
-    const int col = wrap_index(j);
 
-
-    if (row % 2 == 0) {
-        return &syndrome_plaquette[row][col];
-    }
-    return &syndrome_cross[row][col];
+void toggle_plaquette(int i, int j) {
+    int row = wrap_index(i);
+    int col = wrap_index(j);
+    syndrome_plaquette[row][col] = syndrome_plaquette[row][col] ? 0 : 1;
 }
 
-void toggle_syndrome(
-    int syndrome_plaquette[N_SYNDROME_ROWS][N],
-    int syndrome_cross[N_SYNDROME_ROWS][N],
-    int i,
-    int j
-) {
-    int* syndrome = get_syndrome(syndrome_plaquette, syndrome_cross, i, j);
-    *syndrome = *syndrome ? 0 : 1;
+void toggle_cross(int i, int j) {
+    int row = wrap_index(i);
+    int col = wrap_index(j);
+    syndrome_cross[row][col] = syndrome_cross[row][col] ? 0 : 1;
 }
+
 
 void generate_syndrome_matrices(
     const int error_matrix[N][N],
@@ -59,22 +54,25 @@ void generate_syndrome_matrices(
             if (even_row) {
                 //x error
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
-                    toggle_plaquette(i/2, j)
-                    toggle_plaquette(i/2, j+1)
+                    toggle_plaquette(i/2, j);
+                    toggle_plaquette(i/2, j+1);
                 }
                 //z error
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
-
+                    toggle_cross(i/2 -1, j);
+                    toggle_cross(i/2, j);
                 }
                 //odd row
             } else {
                 //x error
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
-
+                    toggle_plaquette((i-1)/2, j);
+                    toggle_plaquette((i+1)/2, j);
                 }
                 //z error
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
-
+                    toggle_cross((i-1)/2, j-1);
+                    toggle_cross((i-1)/2, j);
                 }
             }
         }
@@ -121,11 +119,6 @@ void print_syndrome_matrix(const int matrix[N_SYNDROME_ROWS][N], const char* tit
 }
 
 int main() {
-    int error_matrix[N][N];
-    int syndrome_plaquette[N_SYNDROME_ROWS][N];
-    int syndrome_cross[N_SYNDROME_ROWS][N];
-    const double px = 0.1;
-    const double pz = 0.1;
 
     // generate_random_error_matrix(error_matrix, px, pz);
     
@@ -135,8 +128,8 @@ int main() {
         }
     }
 
-    error_matrix[3][2] = 1;
-    error_matrix[5][4] = 2;
+    error_matrix[1][1] = 1;
+    error_matrix[3][2] = 2;
 
     generate_syndrome_matrices(error_matrix, syndrome_plaquette, syndrome_cross);
     print_full_matrix(error_matrix, "Error matrix:");
