@@ -14,21 +14,17 @@ int wrap_index(int index) {
     return index;
 }
 
-int syndrome_row_index_from_global_row(int row) {
-    return row / 2;
-}
-
 int* get_syndrome(
     int syndrome_plaquette[N_SYNDROME_ROWS][N],
     int syndrome_cross[N_SYNDROME_ROWS][N],
     int i,
     int j
 ) {
-    const int global_row = wrap_index(i);
+    const int row = wrap_index(i);
     const int col = wrap_index(j);
-    const int row = syndrome_row_index_from_global_row(global_row);
 
-    if (global_row % 2 == 0) {
+
+    if (row % 2 == 0) {
         return &syndrome_plaquette[row][col];
     }
     return &syndrome_cross[row][col];
@@ -61,26 +57,24 @@ void generate_syndrome_matrices(
             const bool even_row = (i % 2 == 0);
 
             if (even_row) {
+                //x error
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
-                    // X error on even rows: self + right neighbour
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i, j);
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i, j + 1);
+                    toggle_plaquette(i/2, j)
+                    toggle_plaquette(i/2, j+1)
                 }
+                //z error
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
-                    // Z error on even rows: up + down neighbours
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i - 1, j);
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i + 1, j);
+
                 }
+                //odd row
             } else {
+                //x error
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
-                    // X error on odd rows: up + down neighbours
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i - 1, j);
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i + 1, j);
+
                 }
+                //z error
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
-                    // Z error on odd rows: self + left neighbour
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i, j);
-                    toggle_syndrome(syndrome_plaquette, syndrome_cross, i, j - 1);
+
                 }
             }
         }
@@ -133,7 +127,7 @@ int main() {
     const double px = 0.1;
     const double pz = 0.1;
 
-    generate_random_error_matrix(error_matrix, px, pz);
+    // generate_random_error_matrix(error_matrix, px, pz);
     
     for (int i = 0; i < N ; i++) {
         for (int j = 0; j < N; j++) {
