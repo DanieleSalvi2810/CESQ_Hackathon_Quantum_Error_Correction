@@ -7,10 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Main executable
 add_executable(main main.cpp)
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 # Convenience target: build and run the main executable.
 add_custom_target(run-main
     COMMAND $<TARGET_FILE:main>
