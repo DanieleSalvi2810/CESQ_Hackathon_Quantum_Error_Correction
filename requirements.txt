@@ -1,0 +1,4 @@
+numpy
+pymatching
+matplotlib
+networkx
