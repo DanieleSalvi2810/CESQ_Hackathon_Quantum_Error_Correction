@@ -320,16 +320,16 @@ def decode_request(error_matrix: list[list[int]], horizontal_weight: float, vert
     all_qubits_identity_after_correction = nonzero_count(residual_matrix) == 0
 
     if stabilizers_cleared and all_qubits_identity_after_correction:
-        status_message = "Tutti gli errori fisici risultano annullati."
+        status_message = "All physical errors are canceled out."
         status_level = "success"
     elif stabilizers_cleared:
         status_message = (
-            "Sindrome annullata: checks stabilizer soddisfatti, "
-            "ma resta una configurazione non banale nel reticolo (possibile ciclo logico/stabilizer)."
+            "Syndrome cleared: stabilizer checks are satisfied, "
+            "but a non-trivial lattice configuration remains (possible logical/stabilizer cycle)."
         )
         status_level = "warning"
     else:
-        status_message = "Correzione incompleta: rimangono sindromi attive."
+        status_message = "Incomplete correction: active syndromes remain."
         status_level = "error"
 
     return {
@@ -378,7 +378,7 @@ def make_zero_error_matrix(d: int) -> list[list[int]]:
 
 def build_page(default_d: int, default_h_weight: float, default_v_weight: float, default_share_url: str) -> str:
     html = r"""<!doctype html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -721,95 +721,95 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
   <div class="wrap">
     <section class="hero">
       <h1>Quantum Error Correction Live Demo</h1>
-      <p>Inserisci flip sui qubit (X, Z, Y), calcola sindromi, anima i pairing path e mostra le correzioni.</p>
+      <p>Set qubit flips (X, Z, Y), compute syndromes, animate pairing paths, and show corrections.</p>
     </section>
 
     <div class="grid">
       <section class="card">
-        <h2>Input Sul Grafo Qubit</h2>
+        <h2>Input on the Qubit Graph</h2>
         <div class="controls">
           <div>
-            <label for="distanceInput">Distanza codice (D)</label>
+            <label for="distanceInput">Code distance (D)</label>
             <input id="distanceInput" type="number" min="2" max="14" step="1" value="__DEFAULT_D__" />
           </div>
           <div>
-            <label for="hWeightInput">Peso orizzontale</label>
+            <label for="hWeightInput">Horizontal weight</label>
             <input id="hWeightInput" type="number" min="0.0001" step="0.1" value="__DEFAULT_HW__" />
           </div>
           <div>
-            <label for="vWeightInput">Peso verticale</label>
+            <label for="vWeightInput">Vertical weight</label>
             <input id="vWeightInput" type="number" min="0.0001" step="0.1" value="__DEFAULT_VW__" />
           </div>
           <div>
-            <label for="pxInput">pX random</label>
+            <label for="pxInput">Random pX</label>
             <input id="pxInput" type="number" min="0" max="1" step="0.01" value="0.10" />
           </div>
           <div>
-            <label for="pzInput">pZ random</label>
+            <label for="pzInput">Random pZ</label>
             <input id="pzInput" type="number" min="0" max="1" step="0.01" value="0.10" />
           </div>
           <div>
-            <label for="seedInput">Seed random</label>
+            <label for="seedInput">Random seed</label>
             <input id="seedInput" type="number" step="1" value="42" />
           </div>
           <div class="btn-row">
-            <button id="resizeBtn" class="secondary">Applica D</button>
-            <button id="randomBtn" class="ghost">Randomizza Errori</button>
-            <button id="clearBtn" class="ghost">Azzera</button>
-            <button id="decodeBtn">Decodifica E Anima</button>
+            <button id="resizeBtn" class="secondary">Apply D</button>
+            <button id="randomBtn" class="ghost">Randomize Errors</button>
+            <button id="clearBtn" class="ghost">Clear</button>
+            <button id="decodeBtn">Decode and Animate</button>
           </div>
         </div>
         <svg id="qubitSvg"></svg>
-        <p class="hint">Tap/click su ciascun edge-qubit: I -> X -> Z -> Y (wrap torico implicito, visualizzazione piana).</p>
+        <p class="hint">Tap/click each edge qubit: I -> X -> Z -> Y (implicit toric wrap-around, flat view).</p>
         <div class="legend">
           <span class="chip"><span class="dot x"></span>X</span>
           <span class="chip"><span class="dot z"></span>Z</span>
           <span class="chip"><span class="dot y"></span>Y (X+Z)</span>
-          <span class="chip"><span class="dot c"></span>Correzione proposta</span>
+          <span class="chip"><span class="dot c"></span>Proposed correction</span>
         </div>
-        <div id="statusBox" class="status neutral">In attesa di decodifica.</div>
+        <div id="statusBox" class="status neutral">Waiting for decoding.</div>
       </section>
 
       <section class="card">
-        <h2>QR E Condivisione</h2>
+        <h2>QR and Sharing</h2>
         <div class="share-wrap">
           <input id="shareUrlInput" />
-          <button id="copyBtn" class="secondary">Copia URL</button>
+          <button id="copyBtn" class="secondary">Copy URL</button>
         </div>
         <div class="qr-box">
           <img id="qrImage" alt="QR demo" />
           <div>
-            <button id="qrBtn" class="ghost">Genera QR</button>
-            <p class="hint" id="qrHint">Se /qr.png non e' disponibile, installa qrcode[pil].</p>
+            <button id="qrBtn" class="ghost">Generate QR</button>
+            <p class="hint" id="qrHint">If /qr.png is not available, install qrcode[pil].</p>
           </div>
         </div>
-        <p class="hint">Per la demo da telefono usa URL raggiungibile (LAN o tunnel HTTPS pubblico).</p>
+        <p class="hint">For phone demos, use a reachable URL (LAN or public HTTPS tunnel).</p>
         <pre id="summary" class="mono"></pre>
       </section>
 
       <section class="card full">
-        <h2>Sindromi</h2>
+        <h2>Syndromes</h2>
         <div class="syndrome-panels">
           <div>
-            <p class="pair-caption">Sindrome Plaquette (X-channel)</p>
+            <p class="pair-caption">Plaquette syndrome (X-channel)</p>
             <div id="plaquetteGrid" class="mini-grid"></div>
           </div>
           <div>
-            <p class="pair-caption">Sindrome Cross (Z-channel)</p>
+            <p class="pair-caption">Cross syndrome (Z-channel)</p>
             <div id="crossGrid" class="mini-grid"></div>
           </div>
         </div>
       </section>
 
       <section class="card full">
-        <h2>Pairing Paths Con Animazione</h2>
+        <h2>Pairing Paths with Animation</h2>
         <div class="pair-grid">
           <div>
-            <p class="pair-caption">Canale X</p>
+            <p class="pair-caption">X channel</p>
             <svg id="xPairSvg"></svg>
           </div>
           <div>
-            <p class="pair-caption">Canale Z</p>
+            <p class="pair-caption">Z channel</p>
             <svg id="zPairSvg"></svg>
           </div>
         </div>
@@ -982,7 +982,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         hit.addEventListener("click", () => {
           matrix[i][j] = (matrix[i][j] + 1) % 4;
           state.lastResult = null;
-          updateStatus("neutral", "Input modificato. Premi 'Decodifica E Anima'.");
+          updateStatus("neutral", "Input changed. Press 'Decode and Animate'.");
           drawAll();
         });
         svg.appendChild(hit);
@@ -1161,11 +1161,11 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const hWeight = Number(document.getElementById("hWeightInput").value);
       const vWeight = Number(document.getElementById("vWeightInput").value);
       if (!(hWeight > 0) || !(vWeight > 0)) {
-        updateStatus("error", "I pesi devono essere > 0.");
+        updateStatus("error", "Weights must be > 0.");
         return;
       }
 
-      updateStatus("neutral", "Decodifica in corso...");
+      updateStatus("neutral", "Decoding in progress...");
       try {
         const response = await fetch("/api/decode", {
           method: "POST",
@@ -1178,12 +1178,12 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.error || "Errore API");
+          throw new Error(data.error || "API error");
         }
         state.lastResult = data;
         drawAll();
       } catch (err) {
-        updateStatus("error", `Errore: ${err.message}`);
+        updateStatus("error", `Error: ${err.message}`);
       }
     }
 
@@ -1194,14 +1194,14 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       state.matrix = createZeroMatrix(d);
       state.lastResult = null;
       drawAll();
-      updateStatus("neutral", `D impostato a ${d}.`);
+      updateStatus("neutral", `D set to ${d}.`);
     }
 
     function clearMatrix() {
       state.matrix = createZeroMatrix(state.d);
       state.lastResult = null;
       drawAll();
-      updateStatus("neutral", "Matrice errori azzerata.");
+      updateStatus("neutral", "Error matrix cleared.");
     }
 
     function randomMatrix() {
@@ -1209,40 +1209,40 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const pz = Number(document.getElementById("pzInput").value);
       const seed = Number(document.getElementById("seedInput").value);
       if (!(px >= 0 && px <= 1 && pz >= 0 && pz <= 1)) {
-        updateStatus("error", "pX e pZ devono essere in [0,1].");
+        updateStatus("error", "pX and pZ must be in [0,1].");
         return;
       }
       state.matrix = randomizeErrors(state.d, px, pz, seed);
       state.lastResult = null;
       drawAll();
-      updateStatus("neutral", `Errori random generati (seed=${seed}).`);
+      updateStatus("neutral", `Random errors generated (seed=${seed}).`);
     }
 
     async function copyUrl() {
       const url = document.getElementById("shareUrlInput").value.trim();
       try {
         await navigator.clipboard.writeText(url);
-        updateStatus("neutral", "URL copiato negli appunti.");
+        updateStatus("neutral", "URL copied to clipboard.");
       } catch {
-        updateStatus("warning", "Copia non riuscita: copia manualmente il campo URL.");
+        updateStatus("warning", "Copy failed: copy the URL field manually.");
       }
     }
 
     async function generateQr() {
       const url = document.getElementById("shareUrlInput").value.trim();
       if (!url) {
-        updateStatus("warning", "Inserisci un URL valido prima di generare il QR.");
+        updateStatus("warning", "Enter a valid URL before generating the QR code.");
         return;
       }
       const qrImage = document.getElementById("qrImage");
       qrImage.src = `/qr.png?url=${encodeURIComponent(url)}&t=${Date.now()}`;
       qrImage.onerror = () => {
         document.getElementById("qrHint").textContent =
-          "QR non disponibile: installa qrcode[pil] o usa un generatore QR esterno.";
+          "QR unavailable: install qrcode[pil] or use an external QR generator.";
       };
       qrImage.onload = () => {
         document.getElementById("qrHint").textContent =
-          "QR pronto: inquadra con la fotocamera del telefono.";
+          "QR ready: scan it with your phone camera.";
       };
     }
 
