@@ -245,6 +245,7 @@ int run_python_decoder(const std::string &syndrome_path, const std::string &corr
 int main() {
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
+    const bool use_weighted_decoder = true; const double horizontal_weight = 2.0, vertical_weight = 1.0;
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < D; j++) {
@@ -277,7 +278,21 @@ int main() {
         return 1;
     }
 
-    if (run_python_decoder(syndrome_path, correction_path) != 0) {
+    int decoder_status = 0;
+    if (use_weighted_decoder) {
+        std::string weighted_script_path = "decode_with_pymatching_weighted.py";
+        if (!std::filesystem::exists(weighted_script_path)) {
+            weighted_script_path = "../decode_with_pymatching_weighted.py";
+        }
+        const std::string weighted_cmd =
+            "MPLCONFIGDIR=/tmp python3 " + weighted_script_path + " " + syndrome_path + " " + correction_path +
+            " " + std::to_string(horizontal_weight) + " " + std::to_string(vertical_weight);
+        decoder_status = std::system(weighted_cmd.c_str());
+    } else {
+        decoder_status = run_python_decoder(syndrome_path, correction_path);
+    }
+
+    if (decoder_status != 0) {
         fprintf(stderr, "Python decoder failed. Check pymatching installation.\n");
         return 1;
     }

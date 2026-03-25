@@ -1,6 +1,7 @@
 #include <cctype>
 #include <ctime>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -26,6 +27,9 @@ struct TestCase {
     double px;  // usato solo in modalita' Random
     double pz;  // usato solo in modalita' Random
     int seed;   // -1 = seed da tempo corrente
+    bool use_weighted_decoder;
+    double horizontal_weight;
+    double vertical_weight;
     std::vector<ErrorEntry> errors;
 };
 
@@ -33,7 +37,7 @@ struct TestCase {
 static constexpr size_t ACTIVE_TEST_CASE = 4;
 
 static const std::vector<TestCase> TEST_CASES = {
-    #0
+    // 0
     {
         "base_two_errors_d3",
         3,
@@ -41,12 +45,15 @@ static const std::vector<TestCase> TEST_CASES = {
         0.0,
         0.0,
         -1,
+        false,
+        1.0,
+        1.0,
         {
             {1, 1, 1},
             {3, 2, 2},
         },
     },
-    #1
+    // 1
     {
         "single_y_error_d3",
         3,
@@ -54,11 +61,14 @@ static const std::vector<TestCase> TEST_CASES = {
         0.0,
         0.0,
         -1,
+        false,
+        1.0,
+        1.0,
         {
             {2, 4, 3},
         },
     },
-    #2
+    // 2
     {
         "mixed_errors_d4",
         4,
@@ -66,13 +76,16 @@ static const std::vector<TestCase> TEST_CASES = {
         0.0,
         0.0,
         -1,
+        false,
+        1.0,
+        1.0,
         {
             {1, 1, 1},
             {2, 6, 2},
             {5, 3, 3},
         },
     },
-    #3
+    // 3
     {
         "random_generated_d3",
         3,
@@ -80,17 +93,39 @@ static const std::vector<TestCase> TEST_CASES = {
         0.10,
         0.10,
         -1,
+        false,
+        1.0,
+        1.0,
         {},
     },
-    #4
+    // 4
     {
         "random_generated_d4",
-        50,
+        10,
         ErrorMode::Random,
-        0.15,
-        0.05,
+        0.1,
+        0.1,
         42,
+        false,
+        1.0,
+        1.0,
         {},
+    },
+    // 5
+    {
+        "weighted_vertical_expensive_d3",
+        5,
+        ErrorMode::Manual,
+        0.0,
+        0.0,
+        -1,
+        true,
+        1.0,
+        5.0,
+        {
+            {1, 0, 1},
+            {1, 2, 1},
+        },
     },
 };
 
@@ -125,10 +160,11 @@ void generate_syndrome_matrices(
     std::vector<std::vector<int>> &syndrome_plaquette,
     std::vector<std::vector<int>> &syndrome_cross
 ) {
-    const int n = static_cast<int>(error_matrix.size());
+    const int n_qubit_rows = static_cast<int>(error_matrix.size());
+    const int n_qubit_cols = static_cast<int>(error_matrix[0].size());
 
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
+    for (int i = 0; i < n_qubit_rows; i++) {
+        for (int j = 0; j < n_qubit_cols; j++) {
             const bool even_row = (i % 2 == 0);
             const int value = error_matrix[i][j];
 
@@ -156,9 +192,10 @@ void generate_syndrome_matrices(
 }
 
 void generate_random_error_matrix(std::vector<std::vector<int>> &error_matrix, double px, double pz) {
-    const int n = static_cast<int>(error_matrix.size());
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
+    const int n_qubit_rows = static_cast<int>(error_matrix.size());
+    const int n_qubit_cols = static_cast<int>(error_matrix[0].size());
+    for (int i = 0; i < n_qubit_rows; i++) {
+        for (int j = 0; j < n_qubit_cols; j++) {
             error_matrix[i][j] = 0;
 
             const double rx = static_cast<double>(std::rand()) / RAND_MAX;
@@ -218,10 +255,21 @@ bool write_syndromes_to_json(
     return true;
 }
 
+bool write_error_matrix_to_json(const std::string &path, const std::vector<std::vector<int>> &error_matrix) {
+    std::ofstream out(path);
+    if (!out) {
+        return false;
+    }
+    write_json_matrix(out, error_matrix, 0);
+    out << "\n";
+    return true;
+}
+
 bool read_correction_matrix_from_json(
     const std::string &path,
     std::vector<std::vector<int>> &correction_matrix,
-    int n
+    int n_qubit_rows,
+    int n_qubit_cols
 ) {
     std::ifstream in(path);
     if (!in) {
@@ -230,7 +278,7 @@ bool read_correction_matrix_from_json(
 
     const std::string content((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     std::vector<int> values;
-    values.reserve(static_cast<size_t>(n * n));
+    values.reserve(static_cast<size_t>(n_qubit_rows * n_qubit_cols));
 
     std::string token;
     for (char ch : content) {
@@ -248,13 +296,13 @@ bool read_correction_matrix_from_json(
         values.push_back(std::stoi(token));
     }
 
-    if (values.size() != static_cast<size_t>(n * n)) {
+    if (values.size() != static_cast<size_t>(n_qubit_rows * n_qubit_cols)) {
         return false;
     }
 
     size_t idx = 0;
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
+    for (int i = 0; i < n_qubit_rows; i++) {
+        for (int j = 0; j < n_qubit_cols; j++) {
             correction_matrix[i][j] = values[idx++];
         }
     }
@@ -265,16 +313,73 @@ void apply_correction(
     std::vector<std::vector<int>> &error_matrix,
     const std::vector<std::vector<int>> &correction_matrix
 ) {
-    const int n = static_cast<int>(error_matrix.size());
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
+    const int n_qubit_rows = static_cast<int>(error_matrix.size());
+    const int n_qubit_cols = static_cast<int>(error_matrix[0].size());
+    for (int i = 0; i < n_qubit_rows; i++) {
+        for (int j = 0; j < n_qubit_cols; j++) {
             error_matrix[i][j] ^= correction_matrix[i][j];
         }
     }
 }
 
-int run_python_decoder(const std::string &syndrome_path, const std::string &correction_path) {
-    const std::string cmd = "MPLCONFIGDIR=/tmp python3 decode_with_pymatching.py " + syndrome_path + " " + correction_path;
+void print_correction_orientation_summary(const std::vector<std::vector<int>> &correction_matrix) {
+    int horizontal_nonzero = 0;
+    int vertical_nonzero = 0;
+
+    for (size_t i = 0; i < correction_matrix.size(); i++) {
+        for (size_t j = 0; j < correction_matrix[i].size(); j++) {
+            if (correction_matrix[i][j] == 0) {
+                continue;
+            }
+            if (i % 2 == 0) {
+                horizontal_nonzero++;
+            } else {
+                vertical_nonzero++;
+            }
+        }
+    }
+
+    std::cout << "Correction support summary: horizontal_nonzero=" << horizontal_nonzero
+              << ", vertical_nonzero=" << vertical_nonzero << "\n";
+}
+
+int run_python_decoder(
+    const std::string &syndrome_path,
+    const std::string &correction_path,
+    bool use_weighted_decoder,
+    double horizontal_weight,
+    double vertical_weight
+) {
+    std::string script_path = use_weighted_decoder ? "decode_with_pymatching_weighted.py" : "decode_with_pymatching.py";
+    if (!std::filesystem::exists(script_path)) {
+        script_path = "../" + script_path;
+    }
+
+    std::string cmd = "MPLCONFIGDIR=/tmp python3 " + script_path + " " + syndrome_path + " " + correction_path;
+    if (use_weighted_decoder) {
+        cmd += " " + std::to_string(horizontal_weight) + " " + std::to_string(vertical_weight);
+    }
+
+    return std::system(cmd.c_str());
+}
+
+int print_pairings(
+    const std::string &syndrome_path,
+    const std::string &error_matrix_path,
+    bool use_weighted_decoder,
+    double horizontal_weight,
+    double vertical_weight
+) {
+    std::string script_path = "print_pairings_with_pymatching.py";
+    if (!std::filesystem::exists(script_path)) {
+        script_path = "../" + script_path;
+    }
+
+    std::string cmd =
+        "MPLCONFIGDIR=/tmp python3 " + script_path + " " + syndrome_path + " " + error_matrix_path;
+    if (use_weighted_decoder) {
+        cmd += " " + std::to_string(horizontal_weight) + " " + std::to_string(vertical_weight);
+    }
     return std::system(cmd.c_str());
 }
 
@@ -290,18 +395,20 @@ int main() {
 
     const TestCase &tc = TEST_CASES[ACTIVE_TEST_CASE];
     const int d = tc.d;
-    const int n = 2 * d;
+    const int n_qubit_rows = 2 * d;
+    const int n_qubit_cols = d;
     const int n_syndrome_rows = d;
+    const int n_syndrome_cols = d;
 
     if (d <= 0) {
         std::cerr << "Invalid test case: d must be > 0.\n";
         return 1;
     }
 
-    std::vector<std::vector<int>> error_matrix(n, std::vector<int>(n, 0));
-    std::vector<std::vector<int>> syndrome_plaquette(n_syndrome_rows, std::vector<int>(n, 0));
-    std::vector<std::vector<int>> syndrome_cross(n_syndrome_rows, std::vector<int>(n, 0));
-    std::vector<std::vector<int>> correction_matrix(n, std::vector<int>(n, 0));
+    std::vector<std::vector<int>> error_matrix(n_qubit_rows, std::vector<int>(n_qubit_cols, 0));
+    std::vector<std::vector<int>> syndrome_plaquette(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
+    std::vector<std::vector<int>> syndrome_cross(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
+    std::vector<std::vector<int>> correction_matrix(n_qubit_rows, std::vector<int>(n_qubit_cols, 0));
 
     if (tc.mode == ErrorMode::Random) {
         if (tc.px < 0.0 || tc.px > 1.0 || tc.pz < 0.0 || tc.pz > 1.0) {
@@ -320,9 +427,10 @@ int main() {
                   << ", seed=" << seed_to_use << "\n";
     } else {
         for (const auto &entry : tc.errors) {
-            if (entry.row < 0 || entry.row >= n || entry.col < 0 || entry.col >= n) {
+            if (entry.row < 0 || entry.row >= n_qubit_rows || entry.col < 0 || entry.col >= n_qubit_cols) {
                 std::cerr << "Invalid error coordinate in test '" << tc.name
-                          << "': (" << entry.row << "," << entry.col << ") for N=" << n << "\n";
+                          << "': (" << entry.row << "," << entry.col << ") for matrix size "
+                          << n_qubit_rows << "x" << n_qubit_cols << "\n";
                 return 1;
             }
             if (entry.value < 0 || entry.value > 3) {
@@ -334,7 +442,11 @@ int main() {
     }
 
     std::cout << "Running test case #" << ACTIVE_TEST_CASE << ": " << tc.name
-              << " (d=" << d << ", N=" << n << ")\n";
+              << " (d=" << d << ", qubit_matrix=" << n_qubit_rows << "x" << n_qubit_cols << ")\n";
+    if (tc.use_weighted_decoder) {
+        std::cout << "Weighted decoder enabled: horizontal_weight=" << tc.horizontal_weight
+                  << ", vertical_weight=" << tc.vertical_weight << " (vertical > horizontal)\n";
+    }
 
     generate_syndrome_matrices(error_matrix, syndrome_plaquette, syndrome_cross);
     print_matrix(error_matrix, "Error matrix before correction:");
@@ -343,28 +455,44 @@ int main() {
 
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
+    const std::string error_matrix_path = "error_matrix.json";
 
     if (!write_syndromes_to_json(syndrome_path, syndrome_plaquette, syndrome_cross)) {
         std::cerr << "Failed to write syndrome JSON to " << syndrome_path << "\n";
         return 1;
     }
+    if (!write_error_matrix_to_json(error_matrix_path, error_matrix)) {
+        std::cerr << "Failed to write error matrix JSON to " << error_matrix_path << "\n";
+        return 1;
+    }
+    if (print_pairings(
+            syndrome_path, error_matrix_path, tc.use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+        ) != 0) {
+        std::cerr << "Failed to print pairing/path details.\n";
+        return 1;
+    }
 
-    if (run_python_decoder(syndrome_path, correction_path) != 0) {
+    if (run_python_decoder(
+            syndrome_path, correction_path, tc.use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+        ) != 0) {
         std::cerr << "Python decoder failed. Check pymatching installation.\n";
         return 1;
     }
 
-    if (!read_correction_matrix_from_json(correction_path, correction_matrix, n)) {
+    if (!read_correction_matrix_from_json(correction_path, correction_matrix, n_qubit_rows, n_qubit_cols)) {
         std::cerr << "Failed to read correction matrix from " << correction_path << "\n";
         return 1;
     }
 
     print_matrix(correction_matrix, "Correction matrix from pymatching:");
+    if (tc.use_weighted_decoder) {
+        print_correction_orientation_summary(correction_matrix);
+    }
     apply_correction(error_matrix, correction_matrix);
     print_matrix(error_matrix, "Residual matrix after applying correction:");
 
-    std::vector<std::vector<int>> residual_syndrome_plaquette(n_syndrome_rows, std::vector<int>(n, 0));
-    std::vector<std::vector<int>> residual_syndrome_cross(n_syndrome_rows, std::vector<int>(n, 0));
+    std::vector<std::vector<int>> residual_syndrome_plaquette(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
+    std::vector<std::vector<int>> residual_syndrome_cross(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
     generate_syndrome_matrices(error_matrix, residual_syndrome_plaquette, residual_syndrome_cross);
     print_matrix(residual_syndrome_plaquette, "Residual syndrome plaquette:");
     print_matrix(residual_syndrome_cross, "Residual syndrome cross:");
