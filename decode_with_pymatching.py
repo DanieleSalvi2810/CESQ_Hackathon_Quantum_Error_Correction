@@ -91,7 +91,7 @@ def build_z_check_matrix(d: int) -> np.ndarray:
     return h_z
 
 
-def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
+def decode_with_pymatching_symetric(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
     d = validate_syndromes(syndrome_plaquette, syndrome_cross)
     syndrome_x = flatten_matrix(syndrome_plaquette)
     syndrome_z = flatten_matrix(syndrome_cross)
@@ -117,7 +117,7 @@ def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: 
 
     return correction_matrix
 
-def decode_with_pymatching_asymmetric(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
+def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
     d = validate_syndromes(syndrome_plaquette, syndrome_cross)
     syndrome_x = flatten_matrix(syndrome_plaquette)
     syndrome_z = flatten_matrix(syndrome_cross)
@@ -140,7 +140,10 @@ def decode_with_pymatching_asymmetric(syndrome_plaquette: list[list[int]], syndr
         row: list[int] = []
         for j in range(n_qubit_cols):
             idx = i * n_qubit_cols + j
-            row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
+            if(i%2==0):
+                row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
+            else:
+                row.append(int(correction_z[idx]) + 2 * int(correction_x[idx]))
         correction_matrix.append(row)
 
     return correction_matrix
