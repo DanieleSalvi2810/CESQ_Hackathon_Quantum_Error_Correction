@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#define D 4
+#define D 10
 #define N (D * 2)
 
 int error_matrix[N][D];
@@ -246,7 +246,12 @@ int main() {
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
     const bool use_asymmetric_weighted_mode = true; // false => syndrome normale + decoder normale
-    const double horizontal_weight = 2.0, vertical_weight = 1.0;
+    // Parametri fisici (probabilita' flip) per il decoder asymmetric+weighted.
+    // Il decoder calcola internamente:
+    // - plaquette: w_vertical=-log10(pz), w_horizontal=-log10(px)
+    // - cross:     w_vertical=-log10(px), w_horizontal=-log10(pz)
+    const double decoder_px = px;
+    const double decoder_pz = pz;
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < D; j++) {
@@ -289,7 +294,7 @@ int main() {
         }
         const std::string weighted_cmd =
             "MPLCONFIGDIR=/tmp python3 " + weighted_script_path + " " + syndrome_path + " " + correction_path +
-            " " + std::to_string(horizontal_weight) + " " + std::to_string(vertical_weight);
+            " " + std::to_string(decoder_px) + " " + std::to_string(decoder_pz);
         decoder_status = std::system(weighted_cmd.c_str());
     } else {
         decoder_status = run_python_decoder(syndrome_path, correction_path);

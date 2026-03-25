@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -7,6 +8,7 @@ try:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
     import networkx as nx
     import numpy as np
     from pymatching import Matching
@@ -134,6 +136,62 @@ def make_positions(graph: nx.Graph, d: int) -> dict[int, tuple[float, float]]:
     return pos
 
 
+def lattice_coords(node: int, d: int) -> tuple[int, int] | None:
+    if 0 <= node < d * d:
+        return (node // d, node % d)
+    return None
+
+
+def torus_edge_segments(
+    u: int,
+    v: int,
+    pos: dict[int, tuple[float, float]],
+    d: int,
+    stub: float = 0.45,
+) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    if u not in pos or v not in pos:
+        return []
+
+    rc_u = lattice_coords(u, d)
+    rc_v = lattice_coords(v, d)
+    if rc_u is None or rc_v is None:
+        return [(pos[u], pos[v])]
+
+    ru, cu = rc_u
+    rv, cv = rc_v
+
+    if ru == rv and abs(cu - cv) == d - 1:
+        y = -float(ru)
+        return [((-stub, y), (0.0, y)), ((float(d - 1), y), (float(d - 1) + stub, y))]
+
+    if cu == cv and abs(ru - rv) == d - 1:
+        x = float(cu)
+        top_y = 0.0
+        bottom_y = -float(d - 1)
+        return [((x, top_y), (x, top_y + stub)), ((x, bottom_y), (x, bottom_y - stub))]
+
+    return [(pos[u], pos[v])]
+
+
+def draw_edges_torus(
+    ax: plt.Axes,
+    pos: dict[int, tuple[float, float]],
+    edges: list[tuple[int, int]],
+    d: int,
+    color: str,
+    width: float,
+    alpha: float = 1.0,
+    zorder: int = 1,
+) -> None:
+    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for u, v in edges:
+        segments.extend(torus_edge_segments(int(u), int(v), pos, d))
+    if not segments:
+        return
+    collection = LineCollection(segments, colors=color, linewidths=width, alpha=alpha, zorder=zorder)
+    ax.add_collection(collection)
+
+
 def edges_from_fault_ids(graph: nx.Graph, fault_ids: set[int]) -> list[tuple[int, int]]:
     marked_edges: list[tuple[int, int]] = []
     for u, v, attrs in graph.edges(data=True):
@@ -216,7 +274,7 @@ def draw_channel(
     graph = matching.to_networkx()
     pos = make_positions(graph, d)
 
-    nx.draw_networkx_edges(graph, pos=pos, ax=ax, edge_color="#C7CBD1", width=1.0)
+    draw_edges_torus(ax, pos, list(graph.edges()), d, color="#C7CBD1", width=1.0, zorder=1)
 
     if show_paths:
         path_components = split_paths_from_matched_edges(matched_edges)
@@ -224,25 +282,19 @@ def draw_channel(
         for idx, path_edges in enumerate(path_components):
             if not path_edges:
                 continue
-            nx.draw_networkx_edges(
-                graph,
-                pos=pos,
-                ax=ax,
-                edgelist=path_edges,
-                edge_color=palette[idx % len(palette)],
+            draw_edges_torus(
+                ax,
+                pos,
+                path_edges,
+                d,
+                color=palette[idx % len(palette)],
                 width=3.0,
+                zorder=3,
             )
 
     error_edges = edges_from_fault_ids(graph, error_fault_ids)
     if show_error_edges and error_edges:
-        nx.draw_networkx_edges(
-            graph,
-            pos=pos,
-            ax=ax,
-            edgelist=error_edges,
-            edge_color="#111111",
-            width=5.0,
-        )
+        draw_edges_torus(ax, pos, error_edges, d, color="#111111", width=5.0, zorder=4)
 
     draw_nodes_with_syndrome(ax, graph, pos, syndrome)
 
@@ -273,7 +325,7 @@ def draw_xor_channel(
 ) -> None:
     graph = matching.to_networkx()
     pos = make_positions(graph, d)
-    nx.draw_networkx_edges(graph, pos=pos, ax=ax, edge_color="#D5D8DC", width=1.0)
+    draw_edges_torus(ax, pos, list(graph.edges()), d, color="#D5D8DC", width=1.0, zorder=1)
 
     path_edges = edge_set_from_array(matched_edges)
     flip_edges = {normalize_edge(u, v) for u, v in edges_from_fault_ids(graph, error_fault_ids)}
@@ -302,24 +354,18 @@ def draw_xor_channel(
                 flip_part.append((u, v))
         if path_part:
             n_path_edges += len(path_part)
-            nx.draw_networkx_edges(
-                graph,
-                pos=pos,
-                ax=ax,
-                edgelist=path_part,
-                edge_color=palette[idx % len(palette)],
+            draw_edges_torus(
+                ax,
+                pos,
+                path_part,
+                d,
+                color=palette[idx % len(palette)],
                 width=3.4,
+                zorder=3,
             )
         if flip_part:
             n_flip_edges += len(flip_part)
-            nx.draw_networkx_edges(
-                graph,
-                pos=pos,
-                ax=ax,
-                edgelist=flip_part,
-                edge_color="#111111",
-                width=5.0,
-            )
+            draw_edges_torus(ax, pos, flip_part, d, color="#111111", width=5.0, zorder=4)
 
     draw_nodes_with_syndrome(ax, graph, pos, syndrome)
     ax.set_title(
@@ -373,7 +419,7 @@ def main() -> int:
     if len(sys.argv) not in (3, 5):
         print(
             "Usage: python3 print_pairings_with_pymatching.py <syndrome.json> <error_matrix.json> "
-            "[<horizontal_weight> <vertical_weight>]",
+            "[<px> <pz>]",
             file=sys.stderr,
         )
         return 1
@@ -382,17 +428,17 @@ def main() -> int:
     error_matrix_path = Path(sys.argv[2])
     use_weights = len(sys.argv) == 5
 
-    horizontal_weight = 1.0
-    vertical_weight = 1.0
+    px = 0.1
+    pz = 0.1
     if use_weights:
         try:
-            horizontal_weight = float(sys.argv[3])
-            vertical_weight = float(sys.argv[4])
+            px = float(sys.argv[3])
+            pz = float(sys.argv[4])
         except ValueError:
-            print("Weights must be valid floats.", file=sys.stderr)
+            print("px and pz must be valid floats.", file=sys.stderr)
             return 1
-        if horizontal_weight <= 0 or vertical_weight <= 0:
-            print("Weights must be > 0.", file=sys.stderr)
+        if px <= 0 or pz <= 0 or px > 1 or pz > 1:
+            print("px and pz must be in (0, 1].", file=sys.stderr)
             return 1
 
     try:
@@ -421,27 +467,45 @@ def main() -> int:
         h_z = build_z_check_matrix(d)
 
         if use_weights:
-            weights = make_orientation_weights(d, horizontal_weight, vertical_weight)
-            matching_x = Matching(h_x, weights=weights)
-            matching_z = Matching(h_z, weights=weights)
+            plaquette_horizontal_weight = -math.log10(px)
+            plaquette_vertical_weight = -math.log10(pz)
+            cross_horizontal_weight = -math.log10(pz)
+            cross_vertical_weight = -math.log10(px)
+
+            weights_plaquette = make_orientation_weights(d, plaquette_horizontal_weight, plaquette_vertical_weight)
+            weights_cross = make_orientation_weights(d, cross_horizontal_weight, cross_vertical_weight)
+            matching_x = Matching(h_x, weights=weights_plaquette)
+            matching_z = Matching(h_z, weights=weights_cross)
             print(
-                f"Pairing view (weighted): horizontal_weight={horizontal_weight}, "
-                f"vertical_weight={vertical_weight}"
+                f"Pairing view (weighted from px,pz): px={px}, pz={pz}"
             )
         else:
             matching_x = Matching(h_x)
             matching_z = Matching(h_z)
             print("Pairing view (unweighted)")
 
+        asymmetric_mode = use_weights
         error_fault_ids_x: set[int] = set()
         error_fault_ids_z: set[int] = set()
         for i in range(n_qubit_rows):
             for j in range(n_qubit_cols):
                 value = int(error_matrix[i][j])
                 qid = i * n_qubit_cols + j
-                if value in (1, 3):
+                has_x_component = value in (1, 3)
+                has_z_component = value in (2, 3)
+
+                if asymmetric_mode and (i % 2 == 1):
+                    # In asymmetric syndrome generation, odd rows swap channel mapping:
+                    # X component -> cross channel, Z component -> plaquette channel.
+                    contributes_to_plaquette = has_z_component
+                    contributes_to_cross = has_x_component
+                else:
+                    contributes_to_plaquette = has_x_component
+                    contributes_to_cross = has_z_component
+
+                if contributes_to_plaquette:
                     error_fault_ids_x.add(qid)
-                if value in (2, 3):
+                if contributes_to_cross:
                     error_fault_ids_z.add(qid)
 
         pairs_x, edges_x = print_channel_pairing("X", matching_x, syndrome_x)

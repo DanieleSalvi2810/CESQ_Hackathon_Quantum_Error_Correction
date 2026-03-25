@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -109,8 +110,8 @@ def make_orientation_weights(d: int, horizontal_weight: float, vertical_weight: 
 def decode_with_pymatching_weighted(
     syndrome_plaquette: list[list[int]],
     syndrome_cross: list[list[int]],
-    horizontal_weight: float,
-    vertical_weight: float,
+    px: float,
+    pz: float,
 ) -> list[list[int]]:
     d = validate_syndromes(syndrome_plaquette, syndrome_cross)
     syndrome_x = flatten_matrix(syndrome_plaquette)
@@ -118,10 +119,19 @@ def decode_with_pymatching_weighted(
 
     h_x = build_x_check_matrix(d)
     h_z = build_z_check_matrix(d)
-    weights = make_orientation_weights(d, horizontal_weight, vertical_weight)
+    # Asymmetric+weighted policy requested:
+    # - plaquette channel: horizontal=-log10(px), vertical=-log10(pz)
+    # - cross channel:     horizontal=-log10(pz), vertical=-log10(px)
+    plaquette_horizontal_weight = -math.log10(px)
+    plaquette_vertical_weight = -math.log10(pz)
+    cross_horizontal_weight = -math.log10(pz)
+    cross_vertical_weight = -math.log10(px)
 
-    matching_x = Matching(h_x, weights=weights)
-    matching_z = Matching(h_z, weights=weights)
+    weights_plaquette = make_orientation_weights(d, plaquette_horizontal_weight, plaquette_vertical_weight)
+    weights_cross = make_orientation_weights(d, cross_horizontal_weight, cross_vertical_weight)
+
+    matching_x = Matching(h_x, weights=weights_plaquette)
+    matching_z = Matching(h_z, weights=weights_cross)
 
     correction_x = np.array(matching_x.decode(syndrome_x), dtype=np.uint8) & 1
     correction_z = np.array(matching_z.decode(syndrome_z), dtype=np.uint8) & 1
@@ -146,7 +156,7 @@ def main() -> int:
     if len(sys.argv) != 5:
         print(
             "Usage: python3 decode_with_pymatching_weighted.py "
-            "<syndrome.json> <correction.json> <horizontal_weight> <vertical_weight>",
+            "<syndrome.json> <correction.json> <px> <pz>",
             file=sys.stderr,
         )
         return 1
@@ -155,14 +165,14 @@ def main() -> int:
     correction_path = Path(sys.argv[2])
 
     try:
-        horizontal_weight = float(sys.argv[3])
-        vertical_weight = float(sys.argv[4])
+        px = float(sys.argv[3])
+        pz = float(sys.argv[4])
     except ValueError:
-        print("Weights must be valid floats.", file=sys.stderr)
+        print("px and pz must be valid floats.", file=sys.stderr)
         return 1
 
-    if horizontal_weight <= 0 or vertical_weight <= 0:
-        print("Weights must be > 0.", file=sys.stderr)
+    if px <= 0 or pz <= 0 or px > 1 or pz > 1:
+        print("px and pz must be in (0, 1].", file=sys.stderr)
         return 1
 
     try:
@@ -172,7 +182,7 @@ def main() -> int:
         syndrome_plaquette = syndrome_data["syndrome_plaquette"]
         syndrome_cross = syndrome_data["syndrome_cross"]
         correction_matrix = decode_with_pymatching_weighted(
-            syndrome_plaquette, syndrome_cross, horizontal_weight, vertical_weight
+            syndrome_plaquette, syndrome_cross, px, pz
         )
 
         with correction_path.open("w", encoding="utf-8") as f:

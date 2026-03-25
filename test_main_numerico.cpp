@@ -33,13 +33,16 @@ struct TestCase {
     double px;  // usato solo in modalita' Random
     double pz;  // usato solo in modalita' Random
     int seed;   // -1 = seed da tempo corrente
+    // In modalita' AsymmetricWeighted, questi due campi sono interpretati come:
+    // horizontal_weight -> decoder_px
+    // vertical_weight   -> decoder_pz
     double horizontal_weight;
     double vertical_weight;
     std::vector<ErrorEntry> errors;
 };
 
 // Cambia solo questa variabile per scegliere il test da eseguire.
-static constexpr size_t ACTIVE_TEST_CASE = 0;
+static constexpr size_t ACTIVE_TEST_CASE = 5;
 
 static const std::vector<TestCase> TEST_CASES = {
     // 0
@@ -77,7 +80,7 @@ static const std::vector<TestCase> TEST_CASES = {
     // 2
     {
         "sym_nonweighted_random_d5_seed42",
-        5,
+        7,
         DecodeFlow::SymmetricNonWeighted,
         ErrorMode::Random,
         0.10,
@@ -96,8 +99,8 @@ static const std::vector<TestCase> TEST_CASES = {
         0.0,
         0.0,
         -1,
-        1.0,
-        4.0,
+        0.20,
+        0.01,
         {
             {1, 0, 1},
             {1, 2, 1},
@@ -114,8 +117,8 @@ static const std::vector<TestCase> TEST_CASES = {
         0.0,
         0.0,
         -1,
-        4.0,
-        1.0,
+        0.01,
+        0.20,
         {
             {0, 0, 1},
             {2, 2, 1},
@@ -126,15 +129,38 @@ static const std::vector<TestCase> TEST_CASES = {
     // 5
     {
         "asym_weighted_random_d6_seed123",
-        6,
+        10,
         DecodeFlow::AsymmetricWeighted,
         ErrorMode::Random,
         0.08,
         0.12,
         123,
-        1.0,
-        3.0,
+        0.08,
+        0.12,
         {},
+    },
+    // 6
+    {
+        "sym_nonweighted_manual_z_chain_14_to_20_without_wrap_d7",
+        7,
+        DecodeFlow::SymmetricNonWeighted,
+        ErrorMode::Manual,
+        0.0,
+        0.0,
+        -1,
+        1.0,
+        1.0,
+        {
+            // Nodi target sulla riga 2: 14-15-16-17-18-19-20
+            // Inseriamo Z-flip sui qubit corrispondenti a (14,15)..(19,20),
+            // ma non il qubit di wrap (14,20), che sarebbe j=0.
+            {5, 1, 2},
+            {5, 2, 2},
+            {5, 3, 2},
+            {5, 4, 2},
+            {5, 5, 2},
+            {5, 6, 2},
+        },
     },
 };
 
@@ -455,9 +481,16 @@ int main() {
     const int n_qubit_cols = d;
     const int n_syndrome_rows = d;
     const int n_syndrome_cols = d;
+    const double decoder_px = tc.horizontal_weight;
+    const double decoder_pz = tc.vertical_weight;
 
     if (d <= 0) {
         std::cerr << "Invalid test case: d must be > 0.\n";
+        return 1;
+    }
+    if (use_weighted_decoder && (decoder_px <= 0.0 || decoder_px > 1.0 || decoder_pz <= 0.0 || decoder_pz > 1.0)) {
+        std::cerr << "Invalid decoder probabilities in weighted mode for test '" << tc.name
+                  << "': px,pz must be in (0,1].\n";
         return 1;
     }
 
@@ -506,14 +539,14 @@ int main() {
     }
 
     if (use_weighted_decoder) {
-        std::cout << "Weighted decoder enabled: horizontal_weight=" << tc.horizontal_weight
-                  << ", vertical_weight=" << tc.vertical_weight;
-        if (tc.vertical_weight > tc.horizontal_weight) {
-            std::cout << " (vertical > horizontal)";
-        } else if (tc.horizontal_weight > tc.vertical_weight) {
-            std::cout << " (horizontal > vertical)";
+        std::cout << "Weighted decoder enabled with px=" << decoder_px
+                  << ", pz=" << decoder_pz;
+        if (decoder_pz < decoder_px) {
+            std::cout << " (pz < px => plaquette vertical piu' penalizzate)";
+        } else if (decoder_px < decoder_pz) {
+            std::cout << " (px < pz => cross vertical piu' penalizzate)";
         } else {
-            std::cout << " (equal weights)";
+            std::cout << " (px == pz)";
         }
         std::cout << "\n";
     }
@@ -541,14 +574,14 @@ int main() {
         return 1;
     }
     if (print_pairings(
-            syndrome_path, error_matrix_path, use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+            syndrome_path, error_matrix_path, use_weighted_decoder, decoder_px, decoder_pz
         ) != 0) {
         std::cerr << "Failed to print pairing/path details.\n";
         return 1;
     }
 
     if (run_python_decoder(
-            syndrome_path, correction_path, use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+            syndrome_path, correction_path, use_weighted_decoder, decoder_px, decoder_pz
         ) != 0) {
         std::cerr << "Python decoder failed. Check pymatching installation.\n";
         return 1;

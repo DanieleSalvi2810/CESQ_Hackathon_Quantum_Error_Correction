@@ -1,0 +1,103 @@
+CHECKLIST PRESENTAZIONE HACKATHON (QR + TELEFONO + CLOUDLFARE TUNNEL)
+=====================================================================
+
+OBIETTIVO
+---------
+Avere una URL pubblica funzionante da telefono (anche fuori Wi-Fi locale),
+generare un QR e far provare la demo a tutti durante la presentazione.
+
+
+PREREQUISITI (UNA VOLTA SOLA)
+-----------------------------
+1) Apri VSCode nella cartella del progetto:
+   /mnt/c/Users/danie/CESQ_Hackathon_Quantum_Error_Correction
+
+2) Apri un terminale WSL/bash e lancia:
+
+   cd /mnt/c/Users/danie/CESQ_Hackathon_Quantum_Error_Correction
+   source .venv/bin/activate
+   python3 -m pip install -U numpy pymatching "qrcode[pil]"
+
+3) Verifica cloudflared:
+
+   cloudflared --version
+
+4) Se cloudflared NON esiste, installalo:
+
+   mkdir -p ~/.local/bin
+   curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o ~/.local/bin/cloudflared
+   chmod +x ~/.local/bin/cloudflared
+
+
+RUN DEMO (DA FARE PRIMA DELLA PRESENTAZIONE)
+--------------------------------------------
+Apri DUE terminali in VSCode (entrambi WSL/bash).
+
+TERMINALE A (server locale demo)
+--------------------------------
+cd /mnt/c/Users/danie/CESQ_Hackathon_Quantum_Error_Correction
+source .venv/bin/activate
+python3 hackathon_live_demo.py --host 127.0.0.1 --port 8081
+
+IMPORTANTE: lascia questo terminale aperto.
+
+
+TERMINALE B (tunnel pubblico Cloudflare)
+----------------------------------------
+cd /mnt/c/Users/danie/CESQ_Hackathon_Quantum_Error_Correction
+source .venv/bin/activate
+cloudflared tunnel --url http://127.0.0.1:8081
+
+Se "cloudflared: command not found", usa:
+~/.local/bin/cloudflared tunnel --url http://127.0.0.1:8081
+
+IMPORTANTE: lascia aperto anche questo terminale.
+
+
+TEST RAPIDO (30 secondi)
+------------------------
+1) Copia la URL che appare nel Terminale B:
+   https://xxxxx.trycloudflare.com
+
+2) Apri dal telefono:
+   https://xxxxx.trycloudflare.com/health
+
+3) Se vedi {"ok":true}, sei pronto.
+
+
+GENERAZIONE QR
+--------------
+1) Sul PC apri:
+   http://127.0.0.1:8081
+
+2) Nel campo URL del sito incolla:
+   https://xxxxx.trycloudflare.com
+
+3) Clicca "Genera QR".
+
+4) Fai scansionare il QR ai partecipanti.
+
+
+NOTE IMPORTANTI DURANTE LA DEMO
+-------------------------------
+1) Non chiudere Terminale A (server).
+2) Non chiudere Terminale B (tunnel).
+3) Se riavvii il tunnel, la URL cambia -> rigenera il QR.
+4) I warning cloudflared su ICMP/config sono normali: non bloccano HTTP.
+
+
+PIANO B RAPIDO (SE NON FUNZIONA IL LINK PUBBLICO)
+-------------------------------------------------
+1) Controlla che Terminale A sia ancora attivo.
+2) Controlla che Terminale B sia ancora attivo.
+3) Riavvia solo il tunnel (Terminale B):
+   Ctrl+C
+   cloudflared tunnel --url http://127.0.0.1:8081
+4) Usa la nuova URL e rigenera QR.
+
+
+CHIUSURA A FINE PRESENTAZIONE
+-----------------------------
+1) Ctrl+C su Terminale B.
+2) Ctrl+C su Terminale A.
+
