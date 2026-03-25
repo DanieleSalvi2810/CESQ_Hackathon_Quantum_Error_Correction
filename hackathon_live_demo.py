@@ -828,6 +828,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
     };
     const CORR_X_COLOR = "#2a9d8f";
     const CORR_Z_COLOR = "#60a5fa";
+    const DEFAULT_SEED_PLACEHOLDER = "empty = random";
     const DEFAULT_SHARE_URL = __DEFAULT_SHARE_URL__;
     const state = {
       d: __DEFAULT_D__,
@@ -1321,6 +1322,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const pz = Number(document.getElementById("pzInput").value);
       const seedInput = document.getElementById("seedInput");
       const seedRaw = seedInput.value.trim();
+      const usedAutoSeed = seedRaw === "";
       let seed;
       if (!(px >= 0 && px <= 1 && pz >= 0 && pz <= 1)) {
         updateStatus("error", "pX and pZ must be in [0,1].");
@@ -1339,6 +1341,15 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       }
 
       state.matrix = randomizeErrors(state.d, px, pz, seed);
+      if (usedAutoSeed) {
+        // Keep the field empty but show the sampled seed as suggestion text.
+        seedInput.value = "";
+        seedInput.placeholder = String(seed);
+        seedInput.dataset.suggestedSeed = String(seed);
+      } else {
+        seedInput.dataset.suggestedSeed = "";
+        seedInput.placeholder = DEFAULT_SEED_PLACEHOLDER;
+      }
       state.lastResult = null;
       drawAll();
       updateStatus("neutral", `Random errors generated (seed=${seed}).`);
@@ -1378,6 +1389,19 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const host = window.location.hostname || "";
       const isLocalhost = host === "localhost" || host === "127.0.0.1" || host === "::1";
       shareInput.value = isLocalhost ? DEFAULT_SHARE_URL : window.location.href;
+
+      const seedInput = document.getElementById("seedInput");
+      seedInput.dataset.suggestedSeed = "";
+      seedInput.addEventListener("keydown", (ev) => {
+        if (ev.key !== "Tab") return;
+        if (seedInput.value.trim() !== "") return;
+        const suggestedSeed = seedInput.dataset.suggestedSeed || "";
+        if (suggestedSeed === "") return;
+        // Accept suggested seed with Tab, then continue normal focus navigation.
+        seedInput.value = suggestedSeed;
+        seedInput.dataset.suggestedSeed = "";
+        seedInput.placeholder = DEFAULT_SEED_PLACEHOLDER;
+      });
 
       document.getElementById("clearBtn").addEventListener("click", clearMatrix);
       document.getElementById("randomBtn").addEventListener("click", randomMatrix);
