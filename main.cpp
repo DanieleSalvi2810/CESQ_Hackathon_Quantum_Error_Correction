@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-#define D 3
+#define D 4
 #define N (D * 2)
 
 int error_matrix[N][D];
@@ -50,26 +50,65 @@ void generate_syndrome_matrices() {
             const bool even_row = (i % 2 == 0);
 
             if (even_row) {
-                // X error on horizontal qubit -> adjacent plaquettes.
+                // X error on vertical qubit -> adjacent plaquettes.
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
                     toggle_plaquette(i / 2, j);
                     toggle_plaquette(i / 2, j + 1);
                 }
-                // Z error on horizontal qubit -> adjacent stars/crosses.
+                // Z error on vertical qubit -> adjacent stars/crosses.
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
                     toggle_cross(i / 2 - 1, j);
                     toggle_cross(i / 2, j);
                 }
             } else {
-                // X error on vertical qubit -> adjacent plaquettes.
+                // X error on horizontal qubit -> adjacent plaquettes.
                 if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
                     toggle_plaquette((i - 1) / 2, j);
                     toggle_plaquette((i + 1) / 2, j);
                 }
-                // Z error on vertical qubit -> adjacent stars/crosses.
+                // Z error on horizontal qubit -> adjacent stars/crosses.
                 if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
                     toggle_cross((i - 1) / 2, j - 1);
                     toggle_cross((i - 1) / 2, j);
+                }
+            }
+        }
+    }
+}
+
+void generate_syndrome_matrices_asymmetric() {
+    for (int i = 0; i < D; i++) {
+        for (int j = 0; j < D; j++) {
+            syndrome_plaquette[i][j] = 0;
+            syndrome_cross[i][j] = 0;
+        }
+    }
+    
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < D; j++) {
+            const bool even_row = (i % 2 == 0);
+
+            if (even_row) {
+                // X error on vertical qubit -> adjacent plaquettes.
+                if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
+                    toggle_plaquette(i / 2, j);
+                    toggle_plaquette(i / 2, j + 1);
+                }
+                // Z error on vertical qubit -> adjacent crosses.
+                if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
+                    toggle_cross(i / 2 - 1, j);
+                    toggle_cross(i / 2, j);
+                }
+            } else {
+                // X error on horizontal qubit -> adjacent crosses.
+                if (error_matrix[i][j] == 1 || error_matrix[i][j] == 3) {
+                    toggle_cross((i - 1) / 2, j - 1);
+                    toggle_cross((i - 1) / 2, j);
+                }
+                // Z error on horizontal qubit -> adjacent plaquettes.
+                if (error_matrix[i][j] == 2 || error_matrix[i][j] == 3) {
+                    toggle_plaquette((i - 1) / 2, j);
+                    toggle_plaquette((i + 1) / 2, j);
                 }
             }
         }
@@ -215,15 +254,23 @@ int main() {
     }
 
     // Esempio deterministico; puoi sostituire con generate_random_error_matrix(px, pz)
-    error_matrix[1][1] = 1;
-    error_matrix[3][2] = 2;
+    error_matrix[1][1] = 3;
+    error_matrix[1][3] = 3;
+    error_matrix[3][1] = 3;
+    error_matrix[3][3] = 3;
+
 
     // generate_random_error_matrix(px, pz);
 
     generate_syndrome_matrices();
-    print_matrix(error_matrix, "Error matrix before correction:");
-    print_matrix(syndrome_plaquette, "Syndrome plaquette:");
-    print_matrix(syndrome_cross, "Syndrome cross:");
+    print_matrix(error_matrix, "Error matrix before correction sym:");
+    print_matrix(syndrome_plaquette, "Syndrome plaquette sym:");
+    print_matrix(syndrome_cross, "Syndrome cross sym:");
+
+    generate_syndrome_matrices_asymmetric();
+    print_matrix(error_matrix, "Error matrix before correction asym:");
+    print_matrix(syndrome_plaquette, "Syndrome plaquette asym:");
+    print_matrix(syndrome_cross, "Syndrome cross asym:");
 
     if (!write_syndromes_to_json(syndrome_path)) {
         fprintf(stderr, "Failed to write syndrome JSON to %s\n", syndrome_path.c_str());
@@ -244,7 +291,7 @@ int main() {
     apply_correction();
     print_matrix(error_matrix, "Residual matrix after applying correction:");
 
-    generate_syndrome_matrices();
+    generate_syndrome_matrices_asymmetric();
     print_matrix(syndrome_plaquette, "Residual syndrome plaquette:");
     print_matrix(syndrome_cross, "Residual syndrome cross:");
 
