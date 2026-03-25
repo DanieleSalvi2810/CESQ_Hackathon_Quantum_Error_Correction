@@ -623,6 +623,22 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       grid-template-columns: 1fr 1fr;
     }
 
+    .pair-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 2px 0 8px;
+      color: #334155;
+      font-size: .86rem;
+      font-weight: 600;
+    }
+
+    .pair-controls input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+    }
+
     .pair-caption {
       margin: 0 0 4px;
       color: #334155;
@@ -756,10 +772,11 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
             <button id="randomBtn" class="ghost">Randomize Errors</button>
             <button id="clearBtn" class="ghost">Clear</button>
             <button id="decodeBtn">Decode and Animate</button>
+            <button id="viewResidualBtn" class="ghost">View Corrected State</button>
           </div>
         </div>
         <svg id="qubitSvg"></svg>
-        <p class="hint">Tap/click each edge qubit: I -> X -> Z -> Y (implicit toric wrap-around, flat view).</p>
+        <p class="hint">Tap/click each edge qubit: I -> X -> Z -> Y (implicit toric wrap-around, flat view). Dashed lines show suggested corrections.</p>
         <div class="legend">
           <span class="chip"><span class="dot x"></span>X</span>
           <span class="chip"><span class="dot z"></span>Z</span>
@@ -803,6 +820,10 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
 
       <section class="card full">
         <h2>Pairing Paths with Animation</h2>
+        <label class="pair-controls" for="showOriginalErrorsToggle">
+          <input id="showOriginalErrorsToggle" type="checkbox" />
+          Show original errors
+        </label>
         <div class="pair-grid">
           <div>
             <p class="pair-caption">X channel</p>
@@ -834,6 +855,10 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       d: __DEFAULT_D__,
       matrix: [],
       lastResult: null,
+      showResidual: false,
+      pairAnimationToken: 0,
+      pairAnimationFrameBySvg: {},
+      pairAnimationTokenBySvg: {},
     };
 
     function createZeroMatrix(d) {
@@ -882,8 +907,9 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
     function drawQubitGraph() {
       const svg = document.getElementById("qubitSvg");
       const d = state.d;
-      const matrix = state.matrix;
-      const correction = state.lastResult ? state.lastResult.correction_matrix : null;
+      const inputMatrix = state.matrix;
+      const matrix = state.showResidual && state.lastResult ? state.lastResult.residual_matrix : inputMatrix;
+      const correction = state.lastResult && !state.showResidual ? state.lastResult.correction_matrix : null;
       const margin = 28;
       const cell = Math.max(32, Math.min(56, 430 / d));
       const width = margin * 2 + d * cell;
@@ -970,7 +996,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
           cursor: "pointer",
         });
         hit.addEventListener("click", () => {
-          matrix[i][j] = (matrix[i][j] + 1) % 4;
+          inputMatrix[i][j] = (inputMatrix[i][j] + 1) % 4;
           state.lastResult = null;
           updateStatus("neutral", "Input changed. Press 'Decode and Animate'.");
           drawAll();
@@ -1061,8 +1087,9 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
             cursor: "pointer",
           });
           hit.addEventListener("click", () => {
-            matrix[i][j] = (matrix[i][j] + 1) % 4;
+            inputMatrix[i][j] = (inputMatrix[i][j] + 1) % 4;
             state.lastResult = null;
+            state.showResidual = false;
             updateStatus("neutral", "Input changed. Press 'Decode and Animate'.");
             drawAll();
           });
@@ -1106,12 +1133,17 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       return out;
     }
 
-    function drawPairingSvg(svgId, pairingData, flatSyndrome, color, d) {
+    function drawPairingSvg(svgId, pairingData, flatSyndrome, color, d, sourceMatrix, channel, showOriginalErrors) {
       const svg = document.getElementById(svgId);
       const margin = 26;
       const cell = Math.max(24, Math.min(46, 380 / d));
-      const width = margin * 2 + d * cell + 100;
-      const height = margin * 2 + d * cell;
+
+      if (state.pairAnimationFrameBySvg[svgId]) {
+        cancelAnimationFrame(state.pairAnimationFrameBySvg[svgId]);
+        state.pairAnimationFrameBySvg[svgId] = 0;
+      }
+      const thisToken = ++state.pairAnimationToken;
+      state.pairAnimationTokenBySvg[svgId] = thisToken;
       
       // Extend viewBox to show wrap-around segments poking out on all sides.
       const segmentExtraSpace = cell * 0.8;
@@ -1125,13 +1157,46 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       svg.innerHTML = "";
 
       const posMap = toPosMap(d, pairingData ? pairingData.positions : {});
-      const maxYNode = Math.max(...Array.from(posMap.values()).map(p => p.y), d - 1);
-      const maxY = margin * 2 + (maxYNode + 1) * cell;
-
       const toPx = (p) => ({
         x: margin + p.x * cell,
         y: margin + p.y * cell,
       });
+
+      const addToricSegments = (pu, pv, uNode, vNode, pushSegment) => {
+        const isGridNode = (n) => Number.isInteger(n) && n >= 0 && n < d * d;
+        const dx = pv.x - pu.x;
+        const dy = pv.y - pu.y;
+
+        // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
+        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
+          const leftGhostX = -0.45;
+          const rightGhostX = d - 0.55;
+          if (dx > 0) {
+            pushSegment(pu, { x: leftGhostX, y: pu.y });
+            pushSegment(pv, { x: rightGhostX, y: pv.y });
+          } else {
+            pushSegment(pu, { x: rightGhostX, y: pu.y });
+            pushSegment(pv, { x: leftGhostX, y: pv.y });
+          }
+          return true;
+        }
+
+        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
+          const topGhostY = -0.45;
+          const bottomGhostY = d - 0.55;
+          if (dy > 0) {
+            pushSegment(pu, { x: pu.x, y: topGhostY });
+            pushSegment(pv, { x: pv.x, y: bottomGhostY });
+          } else {
+            pushSegment(pu, { x: pu.x, y: bottomGhostY });
+            pushSegment(pv, { x: pv.x, y: topGhostY });
+          }
+          return true;
+        }
+
+        pushSegment(pu, pv);
+        return true;
+      };
 
       for (let r = 0; r < d; r++) {
         for (let c = 0; c < d; c++) {
@@ -1145,6 +1210,56 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         }
       }
 
+      if (showOriginalErrors && sourceMatrix && sourceMatrix.length === 2 * d) {
+        const includeError = (value) => {
+          if (channel === "x") return value === 1 || value === 3;
+          return value === 2 || value === 3;
+        };
+        const overlayColor = channel === "x" ? "#d1495b" : "#2f74d0";
+        const ghostInset = 0.55;
+
+        for (let i = 0; i < 2 * d; i++) {
+          for (let j = 0; j < d; j++) {
+            const value = Number(sourceMatrix[i][j] || 0);
+            if (!includeError(value)) continue;
+
+            const addOverlaySegment = (from, to) => {
+              const a = toPx(from);
+              const b = toPx(to);
+              svg.appendChild(el("line", {
+                x1: a.x,
+                y1: a.y,
+                x2: b.x,
+                y2: b.y,
+                stroke: overlayColor,
+                "stroke-width": 4.4,
+                "stroke-linecap": "round",
+                "stroke-dasharray": "6 4",
+                opacity: 0.36,
+              }));
+            };
+
+            if (i % 2 === 0) {
+              const row = i / 2;
+              if (j === d - 1) {
+                addOverlaySegment({ x: j, y: row }, { x: d - ghostInset, y: row });
+                addOverlaySegment({ x: 0, y: row }, { x: -1 + ghostInset, y: row });
+              } else {
+                addOverlaySegment({ x: j, y: row }, { x: j + 1, y: row });
+              }
+            } else {
+              const row = (i - 1) / 2;
+              if (row === d - 1) {
+                addOverlaySegment({ x: j, y: row }, { x: j, y: d - ghostInset });
+                addOverlaySegment({ x: j, y: 0 }, { x: j, y: -1 + ghostInset });
+              } else {
+                addOverlaySegment({ x: j, y: row }, { x: j, y: row + 1 });
+              }
+            }
+          }
+        }
+      }
+
       const edges = (pairingData && pairingData.edges) ? pairingData.edges : [];
       const lines = [];
       edges.forEach((edge, idx) => {
@@ -1152,16 +1267,13 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         const pu = posMap.get(Number(u));
         const pv = posMap.get(Number(v));
         if (!pu || !pv) return;
-
-        const isGridNode = (n) => Number.isInteger(n) && n >= 0 && n < d * d;
         const uNode = Number(u);
         const vNode = Number(v);
-        const dx = pv.x - pu.x;
-        const dy = pv.y - pu.y;
 
-        const addAnimatedLine = (from, to) => {
+        const addAnimatedLine = (from, to, orderIdx) => {
           const a = toPx(from);
           const b = toPx(to);
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
           const line = el("line", {
             x1: a.x,
             y1: a.y,
@@ -1170,40 +1282,15 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
             stroke: color,
             "stroke-width": 3.2,
             "stroke-linecap": "round",
-            opacity: 0,
+            opacity: 1,
+            "stroke-dasharray": `${len}`,
+            "stroke-dashoffset": `${len}`,
           });
           svg.appendChild(line);
-          lines.push({ line, idx });
+          lines.push({ line, idx: orderIdx, len });
         };
 
-        // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
-        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
-          const leftGhostX = -0.45;
-          const rightGhostX = d - 0.55;
-          if (dx > 0) {
-            addAnimatedLine(pu, { x: leftGhostX, y: pu.y });
-            addAnimatedLine(pv, { x: rightGhostX, y: pv.y });
-          } else {
-            addAnimatedLine(pu, { x: rightGhostX, y: pu.y });
-            addAnimatedLine(pv, { x: leftGhostX, y: pv.y });
-          }
-          return;
-        }
-
-        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
-          const topGhostY = -0.45;
-          const bottomGhostY = d - 0.55;
-          if (dy > 0) {
-            addAnimatedLine(pu, { x: pu.x, y: topGhostY });
-            addAnimatedLine(pv, { x: pv.x, y: bottomGhostY });
-          } else {
-            addAnimatedLine(pu, { x: pu.x, y: bottomGhostY });
-            addAnimatedLine(pv, { x: pv.x, y: topGhostY });
-          }
-          return;
-        }
-
-        addAnimatedLine(pu, pv);
+        addToricSegments(pu, pv, uNode, vNode, (from, to) => addAnimatedLine(from, to, idx));
       });
 
       const activeNodes = new Set();
@@ -1224,11 +1311,43 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         }));
       });
 
-      lines.forEach(({ line, idx }) => {
-        setTimeout(() => {
-          line.setAttribute("opacity", "1");
-        }, 80 * idx);
-      });
+      if (lines.length === 0) {
+        return;
+      }
+
+      const perEdgeDelayMs = 90;
+      const drawDurationMs = 320;
+      const startTime = performance.now();
+
+      const animateFrame = (now) => {
+        if (state.pairAnimationTokenBySvg[svgId] !== thisToken) {
+          return;
+        }
+
+        let hasRunning = false;
+        for (const item of lines) {
+          const t = (now - startTime - item.idx * perEdgeDelayMs) / drawDurationMs;
+          if (t <= 0) {
+            item.line.setAttribute("stroke-dashoffset", `${item.len}`);
+            hasRunning = true;
+            continue;
+          }
+          if (t >= 1) {
+            item.line.setAttribute("stroke-dashoffset", "0");
+            continue;
+          }
+          item.line.setAttribute("stroke-dashoffset", `${item.len * (1 - t)}`);
+          hasRunning = true;
+        }
+
+        if (hasRunning) {
+          state.pairAnimationFrameBySvg[svgId] = requestAnimationFrame(animateFrame);
+        } else {
+          state.pairAnimationFrameBySvg[svgId] = 0;
+        }
+      };
+
+      state.pairAnimationFrameBySvg[svgId] = requestAnimationFrame(animateFrame);
     }
 
     function summarize(result) {
@@ -1236,10 +1355,18 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const edgesX = result?.pairings?.x?.edges?.length || 0;
       const pairsZ = result?.pairings?.z?.pairs?.length || 0;
       const edgesZ = result?.pairings?.z?.edges?.length || 0;
+      const residualPlaquetteOnes = (result?.residual_syndromes?.plaquette || [])
+        .flat()
+        .reduce((acc, v) => acc + (Number(v) ? 1 : 0), 0);
+      const residualCrossOnes = (result?.residual_syndromes?.cross || [])
+        .flat()
+        .reduce((acc, v) => acc + (Number(v) ? 1 : 0), 0);
       const s = [
         `D=${result.d}`,
         `pairs_x=${pairsX} edges_x=${edgesX}`,
         `pairs_z=${pairsZ} edges_z=${edgesZ}`,
+        `residual_syndrome_plaquette_ones=${residualPlaquetteOnes}`,
+        `residual_syndrome_cross_ones=${residualCrossOnes}`,
         `stabilizers_cleared=${result.stabilizers_cleared}`,
         `all_qubits_identity_after_correction=${result.all_qubits_identity_after_correction}`,
       ];
@@ -1248,12 +1375,13 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
 
     function drawAll() {
       drawQubitGraph();
+      const showOriginalErrors = document.getElementById("showOriginalErrorsToggle")?.checked === true;
 
       if (!state.lastResult) {
         drawBinaryGrid("plaquetteGrid", createZeroMatrix(state.d).slice(0, state.d), "");
         drawBinaryGrid("crossGrid", createZeroMatrix(state.d).slice(0, state.d), "cross");
-        drawPairingSvg("xPairSvg", { edges: [], positions: {} }, [], "#d1495b", state.d);
-        drawPairingSvg("zPairSvg", { edges: [], positions: {} }, [], "#2a9d8f", state.d);
+        drawPairingSvg("xPairSvg", { edges: [], positions: {} }, [], "#d1495b", state.d, state.matrix, "x", showOriginalErrors);
+        drawPairingSvg("zPairSvg", { edges: [], positions: {} }, [], "#2f74d0", state.d, state.matrix, "z", showOriginalErrors);
         document.getElementById("summary").textContent = "";
         return;
       }
@@ -1261,8 +1389,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const res = state.lastResult;
       drawBinaryGrid("plaquetteGrid", res.syndromes.plaquette, "");
       drawBinaryGrid("crossGrid", res.syndromes.cross, "cross");
-      drawPairingSvg("xPairSvg", res.pairings.x, res.syndromes.flat_x, "#d1495b", state.d);
-      drawPairingSvg("zPairSvg", res.pairings.z, res.syndromes.flat_z, "#2a9d8f", state.d);
+      drawPairingSvg("xPairSvg", res.pairings.x, res.syndromes.flat_x, "#d1495b", state.d, res.error_matrix, "x", showOriginalErrors);
+      drawPairingSvg("zPairSvg", res.pairings.z, res.syndromes.flat_z, "#2f74d0", state.d, res.error_matrix, "z", showOriginalErrors);
       document.getElementById("summary").textContent = summarize(res);
       updateStatus(res.status.level, res.status.message);
     }
@@ -1313,6 +1441,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       state.d = d;
       state.matrix = createZeroMatrix(d);
       state.lastResult = null;
+      state.showResidual = false;
       drawAll();
       updateStatus("neutral", `Cleared and set D to ${d}.`);
     }
@@ -1351,6 +1480,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         seedInput.placeholder = DEFAULT_SEED_PLACEHOLDER;
       }
       state.lastResult = null;
+      state.showResidual = false;
       drawAll();
       updateStatus("neutral", `Random errors generated (seed=${seed}).`);
     }
@@ -1406,8 +1536,19 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       document.getElementById("clearBtn").addEventListener("click", clearMatrix);
       document.getElementById("randomBtn").addEventListener("click", randomMatrix);
       document.getElementById("decodeBtn").addEventListener("click", runDecode);
+      document.getElementById("viewResidualBtn").addEventListener("click", () => {
+        if (!state.lastResult) {
+          updateStatus("warning", "Decode first to view corrected state.");
+          return;
+        }
+        state.showResidual = !state.showResidual;
+        const btn = document.getElementById("viewResidualBtn");
+        btn.textContent = state.showResidual ? "View with Corrections" : "View Corrected State";
+        drawAll();
+      });
       document.getElementById("copyBtn").addEventListener("click", copyUrl);
       document.getElementById("qrBtn").addEventListener("click", generateQr);
+      document.getElementById("showOriginalErrorsToggle").addEventListener("change", drawAll);
 
       drawAll();
       generateQr();
