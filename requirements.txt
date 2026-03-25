@@ -2,3 +2,4 @@ numpy
 pymatching
 matplotlib
 networkx
+qrcode[pil]
