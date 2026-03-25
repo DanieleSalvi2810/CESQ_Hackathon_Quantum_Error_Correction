@@ -750,10 +750,9 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
           </div>
           <div>
             <label for="seedInput">Random seed</label>
-            <input id="seedInput" type="number" step="1" value="42" />
+            <input id="seedInput" type="number" step="1" value="" placeholder="empty = random" />
           </div>
           <div class="btn-row">
-            <button id="resizeBtn" class="secondary">Apply D</button>
             <button id="randomBtn" class="ghost">Randomize Errors</button>
             <button id="clearBtn" class="ghost">Clear</button>
             <button id="decodeBtn">Decode and Animate</button>
@@ -765,7 +764,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
           <span class="chip"><span class="dot x"></span>X</span>
           <span class="chip"><span class="dot z"></span>Z</span>
           <span class="chip"><span class="dot y"></span>Y (X+Z)</span>
-          <span class="chip"><span class="dot c"></span>Proposed correction</span>
+          <span class="chip"><span class="dot c"></span>Proposed correction X</span>
+          <span class="chip"><span class="dot" style="background:#2563eb"></span>Proposed correction Z</span>
         </div>
         <div id="statusBox" class="status neutral">Waiting for decoding.</div>
       </section>
@@ -826,12 +826,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       2: "#2f74d0",
       3: "#f39c12",
     };
-    const CORR_COLORS = {
-      0: "transparent",
-      1: "#2a9d8f",
-      2: "#0ea5a8",
-      3: "#047857",
-    };
+    const CORR_X_COLOR = "#2a9d8f";
+    const CORR_Z_COLOR = "#60a5fa";
     const DEFAULT_SHARE_URL = __DEFAULT_SHARE_URL__;
     const state = {
       d: __DEFAULT_D__,
@@ -891,35 +887,22 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const cell = Math.max(32, Math.min(56, 430 / d));
       const width = margin * 2 + d * cell;
       const height = margin * 2 + d * cell;
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      
+      // Extend viewBox to show wrap-around segments on all sides.
+      const segmentExtraSpace = cell * 0.8;
+      const viewBoxMinX = Math.floor(-segmentExtraSpace);
+      const viewBoxMinY = Math.floor(-segmentExtraSpace);
+      const viewBoxMaxX = Math.ceil(width + segmentExtraSpace);
+      const viewBoxMaxY = Math.ceil(height + segmentExtraSpace);
+      const viewBoxWidth = viewBoxMaxX - viewBoxMinX;
+      const viewBoxHeight = viewBoxMaxY - viewBoxMinY;
+      svg.setAttribute("viewBox", `${viewBoxMinX} ${viewBoxMinY} ${viewBoxWidth} ${viewBoxHeight}`);
       svg.innerHTML = "";
 
-      const bg = el("rect", { x: 0, y: 0, width, height, fill: "#f9fbff" });
+      const bg = el("rect", { x: viewBoxMinX, y: viewBoxMinY, width: viewBoxWidth, height: viewBoxHeight, fill: "#f9fbff" });
       svg.appendChild(bg);
 
-      for (let r = 0; r <= d; r++) {
-        const y = margin + r * cell;
-        svg.appendChild(el("line", {
-          x1: margin,
-          y1: y,
-          x2: margin + d * cell,
-          y2: y,
-          stroke: "#d7e1ec",
-          "stroke-width": 1,
-        }));
-      }
-      for (let c = 0; c <= d; c++) {
-        const x = margin + c * cell;
-        svg.appendChild(el("line", {
-          x1: x,
-          y1: margin,
-          x2: x,
-          y2: margin + d * cell,
-          stroke: "#d7e1ec",
-          "stroke-width": 1,
-        }));
-      }
-
+      // Draw circles first
       for (let r = 0; r <= d; r++) {
         for (let c = 0; c <= d; c++) {
           svg.appendChild(el("circle", {
@@ -931,46 +914,52 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         }
       }
 
+      // Collect all edges to render in two passes
+      const edges = [];
+
       const placeEdge = (i, j, x1, y1, x2, y2) => {
+        edges.push({ i, j, x1, y1, x2, y2 });
+      };
+
+      // Collect all edges
+      for (let i = 0; i < 2 * d; i++) {
+        for (let j = 0; j < d; j++) {
+          if (i % 2 === 0) {
+            const row = i / 2;
+            const x1 = margin + j * cell;
+            const y = margin + row * cell;
+            const x2 = margin + (j + 1) * cell;
+            placeEdge(i, j, x1, y, x2, y);
+            // Horizontal wrap: draw ghost edge on left side
+            if (j === d - 1) {
+              const ghostX1 = x1 - d * cell;
+              const ghostX2 = x2 - d * cell;
+              placeEdge(i, j, ghostX1, y, ghostX2, y);
+            }
+          } else {
+            const row = (i - 1) / 2;
+            const x = margin + j * cell;
+            const y1 = margin + row * cell;
+            const y2 = margin + (row + 1) * cell;
+            placeEdge(i, j, x, y1, x, y2);
+            // Vertical wrap: draw ghost edge on top side
+            if (row === d - 1) {
+              const ghostY1 = y1 - d * cell;
+              const ghostY2 = y2 - d * cell;
+              placeEdge(i, j, x, ghostY1, x, ghostY2);
+            }
+          }
+        }
+      }
+
+      // First pass: draw all grey background edges and hit areas
+      for (const { i, j, x1, y1, x2, y2 } of edges) {
         svg.appendChild(el("line", {
           x1, y1, x2, y2,
           stroke: "#c4ceda",
           "stroke-width": 5,
           "stroke-linecap": "round",
         }));
-
-        const value = matrix[i][j];
-        if (value !== 0) {
-          svg.appendChild(el("line", {
-            x1, y1, x2, y2,
-            stroke: ERROR_COLORS[value],
-            "stroke-width": 7.5,
-            "stroke-linecap": "round",
-          }));
-          const tx = (x1 + x2) / 2;
-          const ty = (y1 + y2) / 2;
-          const text = el("text", {
-            x: tx,
-            y: ty - 7,
-            "text-anchor": "middle",
-            "font-size": 10,
-            "font-weight": 700,
-            fill: "#0f172a",
-          });
-          text.textContent = LABELS[value];
-          svg.appendChild(text);
-        }
-
-        if (correction && correction[i] && correction[i][j] !== 0) {
-          const cVal = correction[i][j];
-          svg.appendChild(el("line", {
-            x1, y1, x2, y2,
-            stroke: CORR_COLORS[cVal],
-            "stroke-width": 3.5,
-            "stroke-dasharray": "5 4",
-            "stroke-linecap": "round",
-          }));
-        }
 
         const hit = el("line", {
           x1, y1, x2, y2,
@@ -986,23 +975,97 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
           drawAll();
         });
         svg.appendChild(hit);
-      };
+      }
 
-      for (let i = 0; i < 2 * d; i++) {
-        for (let j = 0; j < d; j++) {
-          if (i % 2 === 0) {
-            const row = i / 2;
-            const x1 = margin + j * cell;
-            const y = margin + row * cell;
-            const x2 = margin + (j + 1) * cell;
-            placeEdge(i, j, x1, y, x2, y);
-          } else {
-            const row = (i - 1) / 2;
-            const x = margin + j * cell;
-            const y1 = margin + row * cell;
-            const y2 = margin + (row + 1) * cell;
-            placeEdge(i, j, x, y1, x, y2);
+      // Second pass: draw all error overlays on top
+      for (const { i, j, x1, y1, x2, y2 } of edges) {
+        const value = matrix[i][j];
+        if (value !== 0) {
+          svg.appendChild(el("line", {
+            x1, y1, x2, y2,
+            stroke: ERROR_COLORS[value],
+            "stroke-width": 7.5,
+            "stroke-linecap": "round",
+          }));
+          const tx = (x1 + x2) / 2;
+          const ty = (y1 + y2) / 2;
+          const isVerticalEdge = Math.abs(x2 - x1) < Math.abs(y2 - y1);
+          const text = el("text", {
+            x: isVerticalEdge ? tx + 8 : tx,
+            y: isVerticalEdge ? ty + 3 : ty - 7,
+            "text-anchor": isVerticalEdge ? "start" : "middle",
+            "font-size": 10,
+            "font-weight": 700,
+            fill: "#0f172a",
+          });
+          text.textContent = LABELS[value];
+          svg.appendChild(text);
+        }
+
+        if (correction && correction[i]) {
+          const cVal = Number(correction[i][j] || 0);
+          const hasXCorrection = (cVal & 1) !== 0;
+          const hasZCorrection = (cVal & 2) !== 0;
+
+          if (hasXCorrection || hasZCorrection) {
+            let xShift = 0;
+            let yShift = 0;
+            if (hasXCorrection && hasZCorrection) {
+              // Split overlays slightly so both dashed corrections remain visible on the same edge.
+              if (Math.abs(x2 - x1) >= Math.abs(y2 - y1)) {
+                yShift = 1.6;
+              } else {
+                xShift = 1.6;
+              }
+            }
+
+            if (hasXCorrection) {
+              svg.appendChild(el("line", {
+                x1: x1 - xShift,
+                y1: y1 - yShift,
+                x2: x2 - xShift,
+                y2: y2 - yShift,
+                stroke: CORR_X_COLOR,
+                "stroke-width": 3.1,
+                "stroke-dasharray": "5 4",
+                "stroke-linecap": "round",
+              }));
+            }
+
+            if (hasZCorrection) {
+              svg.appendChild(el("line", {
+                x1: x1 + xShift,
+                y1: y1 + yShift,
+                x2: x2 + xShift,
+                y2: y2 + yShift,
+                stroke: CORR_Z_COLOR,
+                "stroke-width": 3.1,
+                "stroke-dasharray": "5 4",
+                "stroke-linecap": "round",
+              }));
+            }
           }
+        }
+      }
+
+      // Third pass: draw wider hitboxes for error edges on top
+      for (const { i, j, x1, y1, x2, y2 } of edges) {
+        const value = matrix[i][j];
+        if (value !== 0) {
+          const hit = el("line", {
+            x1, y1, x2, y2,
+            stroke: "transparent",
+            "stroke-width": 26,
+            "stroke-linecap": "round",
+            cursor: "pointer",
+          });
+          hit.addEventListener("click", () => {
+            matrix[i][j] = (matrix[i][j] + 1) % 4;
+            state.lastResult = null;
+            updateStatus("neutral", "Input changed. Press 'Decode and Animate'.");
+            drawAll();
+          });
+          svg.appendChild(hit);
         }
       }
     }
@@ -1048,13 +1111,21 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const cell = Math.max(24, Math.min(46, 380 / d));
       const width = margin * 2 + d * cell + 100;
       const height = margin * 2 + d * cell;
-      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      
+      // Extend viewBox to show wrap-around segments poking out on all sides.
+      const segmentExtraSpace = cell * 0.8;
+      const viewBoxMinX = Math.floor(margin - segmentExtraSpace);
+      const viewBoxMinY = Math.floor(margin - segmentExtraSpace);
+      const viewBoxMaxX = Math.ceil(margin + d * cell + segmentExtraSpace);
+      const viewBoxMaxY = Math.ceil(margin + d * cell + segmentExtraSpace);
+      const viewBoxWidth = viewBoxMaxX - viewBoxMinX;
+      const viewBoxHeight = viewBoxMaxY - viewBoxMinY;
+      svg.setAttribute("viewBox", `${viewBoxMinX} ${viewBoxMinY} ${viewBoxWidth} ${viewBoxHeight}`);
       svg.innerHTML = "";
 
       const posMap = toPosMap(d, pairingData ? pairingData.positions : {});
       const maxYNode = Math.max(...Array.from(posMap.values()).map(p => p.y), d - 1);
       const maxY = margin * 2 + (maxYNode + 1) * cell;
-      svg.setAttribute("viewBox", `0 0 ${width} ${Math.max(height, maxY + margin)}`);
 
       const toPx = (p) => ({
         x: margin + p.x * cell,
@@ -1080,20 +1151,58 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         const pu = posMap.get(Number(u));
         const pv = posMap.get(Number(v));
         if (!pu || !pv) return;
-        const a = toPx(pu);
-        const b = toPx(pv);
-        const line = el("line", {
-          x1: a.x,
-          y1: a.y,
-          x2: b.x,
-          y2: b.y,
-          stroke: color,
-          "stroke-width": 3.2,
-          "stroke-linecap": "round",
-          opacity: 0,
-        });
-        svg.appendChild(line);
-        lines.push({ line, idx });
+
+        const isGridNode = (n) => Number.isInteger(n) && n >= 0 && n < d * d;
+        const uNode = Number(u);
+        const vNode = Number(v);
+        const dx = pv.x - pu.x;
+        const dy = pv.y - pu.y;
+
+        const addAnimatedLine = (from, to) => {
+          const a = toPx(from);
+          const b = toPx(to);
+          const line = el("line", {
+            x1: a.x,
+            y1: a.y,
+            x2: b.x,
+            y2: b.y,
+            stroke: color,
+            "stroke-width": 3.2,
+            "stroke-linecap": "round",
+            opacity: 0,
+          });
+          svg.appendChild(line);
+          lines.push({ line, idx });
+        };
+
+        // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
+        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
+          const leftGhostX = -0.45;
+          const rightGhostX = d - 0.55;
+          if (dx > 0) {
+            addAnimatedLine(pu, { x: leftGhostX, y: pu.y });
+            addAnimatedLine(pv, { x: rightGhostX, y: pv.y });
+          } else {
+            addAnimatedLine(pu, { x: rightGhostX, y: pu.y });
+            addAnimatedLine(pv, { x: leftGhostX, y: pv.y });
+          }
+          return;
+        }
+
+        if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
+          const topGhostY = -0.45;
+          const bottomGhostY = d - 0.55;
+          if (dy > 0) {
+            addAnimatedLine(pu, { x: pu.x, y: topGhostY });
+            addAnimatedLine(pv, { x: pv.x, y: bottomGhostY });
+          } else {
+            addAnimatedLine(pu, { x: pu.x, y: bottomGhostY });
+            addAnimatedLine(pv, { x: pv.x, y: topGhostY });
+          }
+          return;
+        }
+
+        addAnimatedLine(pu, pv);
       });
 
       const activeNodes = new Set();
@@ -1198,20 +1307,37 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
     }
 
     function clearMatrix() {
-      state.matrix = createZeroMatrix(state.d);
+      const raw = Number(document.getElementById("distanceInput").value);
+      const d = Math.max(2, Math.min(14, Number.isFinite(raw) ? Math.floor(raw) : state.d));
+      state.d = d;
+      state.matrix = createZeroMatrix(d);
       state.lastResult = null;
       drawAll();
-      updateStatus("neutral", "Error matrix cleared.");
+      updateStatus("neutral", `Cleared and set D to ${d}.`);
     }
 
     function randomMatrix() {
       const px = Number(document.getElementById("pxInput").value);
       const pz = Number(document.getElementById("pzInput").value);
-      const seed = Number(document.getElementById("seedInput").value);
+      const seedInput = document.getElementById("seedInput");
+      const seedRaw = seedInput.value.trim();
+      let seed;
       if (!(px >= 0 && px <= 1 && pz >= 0 && pz <= 1)) {
         updateStatus("error", "pX and pZ must be in [0,1].");
         return;
       }
+
+      if (seedRaw === "") {
+        seed = Math.floor(Math.random() * 4294967296) >>> 0;
+      } else {
+        const parsedSeed = Number(seedRaw);
+        if (!Number.isFinite(parsedSeed)) {
+          updateStatus("error", "Seed must be a finite number or left empty.");
+          return;
+        }
+        seed = Math.floor(parsedSeed) >>> 0;
+      }
+
       state.matrix = randomizeErrors(state.d, px, pz, seed);
       state.lastResult = null;
       drawAll();
@@ -1253,7 +1379,6 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const isLocalhost = host === "localhost" || host === "127.0.0.1" || host === "::1";
       shareInput.value = isLocalhost ? DEFAULT_SHARE_URL : window.location.href;
 
-      document.getElementById("resizeBtn").addEventListener("click", applyDistance);
       document.getElementById("clearBtn").addEventListener("click", clearMatrix);
       document.getElementById("randomBtn").addEventListener("click", randomMatrix);
       document.getElementById("decodeBtn").addEventListener("click", runDecode);
