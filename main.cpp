@@ -245,7 +245,8 @@ int run_python_decoder(const std::string &syndrome_path, const std::string &corr
 int main() {
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
-    const bool use_weighted_decoder = true; const double horizontal_weight = 2.0, vertical_weight = 1.0;
+    const bool use_asymmetric_weighted_mode = true; // false => syndrome normale + decoder normale
+    const double horizontal_weight = 2.0, vertical_weight = 1.0;
 
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < D; j++) {
@@ -263,15 +264,17 @@ int main() {
 
     // generate_random_error_matrix(px, pz);
 
-    generate_syndrome_matrices();
-    print_matrix(error_matrix, "Error matrix before correction sym:");
-    print_matrix(syndrome_plaquette, "Syndrome plaquette sym:");
-    print_matrix(syndrome_cross, "Syndrome cross sym:");
-
-    generate_syndrome_matrices_asymmetric();
-    print_matrix(error_matrix, "Error matrix before correction asym:");
-    print_matrix(syndrome_plaquette, "Syndrome plaquette asym:");
-    print_matrix(syndrome_cross, "Syndrome cross asym:");
+    if (use_asymmetric_weighted_mode) {
+        generate_syndrome_matrices_asymmetric();
+        print_matrix(error_matrix, "Error matrix before correction asym:");
+        print_matrix(syndrome_plaquette, "Syndrome plaquette asym:");
+        print_matrix(syndrome_cross, "Syndrome cross asym:");
+    } else {
+        generate_syndrome_matrices();
+        print_matrix(error_matrix, "Error matrix before correction sym:");
+        print_matrix(syndrome_plaquette, "Syndrome plaquette sym:");
+        print_matrix(syndrome_cross, "Syndrome cross sym:");
+    }
 
     if (!write_syndromes_to_json(syndrome_path)) {
         fprintf(stderr, "Failed to write syndrome JSON to %s\n", syndrome_path.c_str());
@@ -279,7 +282,7 @@ int main() {
     }
 
     int decoder_status = 0;
-    if (use_weighted_decoder) {
+    if (use_asymmetric_weighted_mode) {
         std::string weighted_script_path = "decode_with_pymatching_weighted.py";
         if (!std::filesystem::exists(weighted_script_path)) {
             weighted_script_path = "../decode_with_pymatching_weighted.py";
@@ -306,7 +309,11 @@ int main() {
     apply_correction();
     print_matrix(error_matrix, "Residual matrix after applying correction:");
 
-    generate_syndrome_matrices_asymmetric();
+    if (use_asymmetric_weighted_mode) {
+        generate_syndrome_matrices_asymmetric();
+    } else {
+        generate_syndrome_matrices();
+    }
     print_matrix(syndrome_plaquette, "Residual syndrome plaquette:");
     print_matrix(syndrome_cross, "Residual syndrome cross:");
 

@@ -133,7 +133,10 @@ def decode_with_pymatching_weighted(
         row: list[int] = []
         for j in range(n_qubit_cols):
             idx = i * n_qubit_cols + j
-            row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
+            if(i%2==0):
+                row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
+            else:
+                row.append(int(correction_z[idx]) + 2 * int(correction_x[idx]))
         correction_matrix.append(row)
 
     return correction_matrix

@@ -91,7 +91,7 @@ def build_z_check_matrix(d: int) -> np.ndarray:
     return h_z
 
 
-def decode_with_pymatching_symetric(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
+def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
     d = validate_syndromes(syndrome_plaquette, syndrome_cross)
     syndrome_x = flatten_matrix(syndrome_plaquette)
     syndrome_z = flatten_matrix(syndrome_cross)
@@ -117,36 +117,10 @@ def decode_with_pymatching_symetric(syndrome_plaquette: list[list[int]], syndrom
 
     return correction_matrix
 
-def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
-    d = validate_syndromes(syndrome_plaquette, syndrome_cross)
-    syndrome_x = flatten_matrix(syndrome_plaquette)
-    syndrome_z = flatten_matrix(syndrome_cross)
 
-    h_x = build_x_check_matrix(d)
-    h_z = build_z_check_matrix(d)
-
-    matching_x = Matching(h_x)
-    matching_z = Matching(h_z)
-
-    correction_x = np.array(matching_x.decode(syndrome_x), dtype=np.uint8) & 1
-    correction_z = np.array(matching_z.decode(syndrome_z), dtype=np.uint8) & 1
-
-    correction_matrix: list[list[int]] = []
-    n_qubit_rows = 2 * d
-    n_qubit_cols = d
-
-    #change the way to append indices depending on vertical/horizontal lines
-    for i in range(n_qubit_rows):
-        row: list[int] = []
-        for j in range(n_qubit_cols):
-            idx = i * n_qubit_cols + j
-            if(i%2==0):
-                row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
-            else:
-                row.append(int(correction_z[idx]) + 2 * int(correction_x[idx]))
-        correction_matrix.append(row)
-
-    return correction_matrix
+# Backward-compatible alias in case other scripts still use the old name.
+def decode_with_pymatching_symetric(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
+    return decode_with_pymatching(syndrome_plaquette, syndrome_cross)
 
 
 def main() -> int:

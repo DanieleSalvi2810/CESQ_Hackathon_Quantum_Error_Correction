@@ -20,32 +20,37 @@ enum class ErrorMode {
     Random,
 };
 
+enum class DecodeFlow {
+    SymmetricNonWeighted,
+    AsymmetricWeighted,
+};
+
 struct TestCase {
     std::string name;
     int d;  // code distance
+    DecodeFlow flow;
     ErrorMode mode;
     double px;  // usato solo in modalita' Random
     double pz;  // usato solo in modalita' Random
     int seed;   // -1 = seed da tempo corrente
-    bool use_weighted_decoder;
     double horizontal_weight;
     double vertical_weight;
     std::vector<ErrorEntry> errors;
 };
 
 // Cambia solo questa variabile per scegliere il test da eseguire.
-static constexpr size_t ACTIVE_TEST_CASE = 4;
+static constexpr size_t ACTIVE_TEST_CASE = 0;
 
 static const std::vector<TestCase> TEST_CASES = {
     // 0
     {
-        "base_two_errors_d3",
+        "sym_nonweighted_manual_base_d3",
         3,
+        DecodeFlow::SymmetricNonWeighted,
         ErrorMode::Manual,
         0.0,
         0.0,
         -1,
-        false,
         1.0,
         1.0,
         {
@@ -55,77 +60,81 @@ static const std::vector<TestCase> TEST_CASES = {
     },
     // 1
     {
-        "single_y_error_d3",
-        3,
+        "sym_nonweighted_manual_y_d4",
+        4,
+        DecodeFlow::SymmetricNonWeighted,
         ErrorMode::Manual,
         0.0,
         0.0,
         -1,
-        false,
         1.0,
         1.0,
         {
-            {2, 4, 3},
+            {2, 1, 3},
+            {5, 3, 1},
         },
     },
     // 2
     {
-        "mixed_errors_d4",
-        4,
-        ErrorMode::Manual,
-        0.0,
-        0.0,
-        -1,
-        false,
+        "sym_nonweighted_random_d5_seed42",
+        5,
+        DecodeFlow::SymmetricNonWeighted,
+        ErrorMode::Random,
+        0.10,
+        0.10,
+        42,
         1.0,
         1.0,
-        {
-            {1, 1, 1},
-            {2, 6, 2},
-            {5, 3, 3},
-        },
+        {},
     },
     // 3
     {
-        "random_generated_d3",
-        3,
-        ErrorMode::Random,
-        0.10,
-        0.10,
-        -1,
-        false,
-        1.0,
-        1.0,
-        {},
-    },
-    // 4
-    {
-        "random_generated_d4",
-        10,
-        ErrorMode::Random,
-        0.1,
-        0.1,
-        42,
-        false,
-        1.0,
-        1.0,
-        {},
-    },
-    // 5
-    {
-        "weighted_vertical_expensive_d3",
+        "asym_weighted_manual_vertical_expensive_d5",
         5,
+        DecodeFlow::AsymmetricWeighted,
         ErrorMode::Manual,
         0.0,
         0.0,
         -1,
-        true,
         1.0,
-        5.0,
+        4.0,
         {
             {1, 0, 1},
             {1, 2, 1},
+            {4, 1, 2},
+            {7, 3, 2},
         },
+    },
+    // 4
+    {
+        "asym_weighted_manual_horizontal_expensive_d5",
+        5,
+        DecodeFlow::AsymmetricWeighted,
+        ErrorMode::Manual,
+        0.0,
+        0.0,
+        -1,
+        4.0,
+        1.0,
+        {
+            {0, 0, 1},
+            {2, 2, 1},
+            {3, 1, 2},
+            {9, 4, 2},
+        },
+    },
+    // 5
+    {
+        "asym_weighted_random_d6_seed123",
+        6,
+        DecodeFlow::AsymmetricWeighted,
+        ErrorMode::Random,
+        0.08,
+        0.12,
+        123,
+        1.0,
+        3.0,
+        {},
     },
 };
 
@@ -185,6 +194,42 @@ void generate_syndrome_matrices(
                 if (value == 2 || value == 3) {
                     toggle(syndrome_cross, (i - 1) / 2, j - 1);
                     toggle(syndrome_cross, (i - 1) / 2, j);
+                }
+            }
+        }
+    }
+}
+
+void generate_syndrome_matrices_asymmetric(
+    const std::vector<std::vector<int>> &error_matrix,
+    std::vector<std::vector<int>> &syndrome_plaquette,
+    std::vector<std::vector<int>> &syndrome_cross
+) {
+    const int n_qubit_rows = static_cast<int>(error_matrix.size());
+    const int n_qubit_cols = static_cast<int>(error_matrix[0].size());
+
+    for (int i = 0; i < n_qubit_rows; i++) {
+        for (int j = 0; j < n_qubit_cols; j++) {
+            const bool even_row = (i % 2 == 0);
+            const int value = error_matrix[i][j];
+
+            if (even_row) {
+                if (value == 1 || value == 3) {
+                    toggle(syndrome_plaquette, i / 2, j);
+                    toggle(syndrome_plaquette, i / 2, j + 1);
+                }
+                if (value == 2 || value == 3) {
+                    toggle(syndrome_cross, i / 2 - 1, j);
+                    toggle(syndrome_cross, i / 2, j);
+                }
+            } else {
+                if (value == 1 || value == 3) {
+                    toggle(syndrome_cross, (i - 1) / 2, j - 1);
+                    toggle(syndrome_cross, (i - 1) / 2, j);
+                }
+                if (value == 2 || value == 3) {
+                    toggle(syndrome_plaquette, (i - 1) / 2, j);
+                    toggle(syndrome_plaquette, (i + 1) / 2, j);
                 }
             }
         }
@@ -383,6 +428,16 @@ int print_pairings(
     return std::system(cmd.c_str());
 }
 
+int plot_correction_gates_image(const std::string &correction_path, const std::string &output_path) {
+    std::string script_path = "plot_correction_gates.py";
+    if (!std::filesystem::exists(script_path)) {
+        script_path = "../" + script_path;
+    }
+    const std::string cmd =
+        "MPLCONFIGDIR=/tmp python3 " + script_path + " " + correction_path + " " + output_path;
+    return std::system(cmd.c_str());
+}
+
 int main() {
     if (TEST_CASES.empty()) {
         std::cerr << "No test cases defined.\n";
@@ -394,6 +449,7 @@ int main() {
     }
 
     const TestCase &tc = TEST_CASES[ACTIVE_TEST_CASE];
+    const bool use_weighted_decoder = (tc.flow == DecodeFlow::AsymmetricWeighted);
     const int d = tc.d;
     const int n_qubit_rows = 2 * d;
     const int n_qubit_cols = d;
@@ -443,12 +499,30 @@ int main() {
 
     std::cout << "Running test case #" << ACTIVE_TEST_CASE << ": " << tc.name
               << " (d=" << d << ", qubit_matrix=" << n_qubit_rows << "x" << n_qubit_cols << ")\n";
-    if (tc.use_weighted_decoder) {
-        std::cout << "Weighted decoder enabled: horizontal_weight=" << tc.horizontal_weight
-                  << ", vertical_weight=" << tc.vertical_weight << " (vertical > horizontal)\n";
+    if (tc.flow == DecodeFlow::SymmetricNonWeighted) {
+        std::cout << "Flow: symmetric syndrome + non-weighted decoder\n";
+    } else {
+        std::cout << "Flow: asymmetric syndrome + weighted decoder\n";
     }
 
-    generate_syndrome_matrices(error_matrix, syndrome_plaquette, syndrome_cross);
+    if (use_weighted_decoder) {
+        std::cout << "Weighted decoder enabled: horizontal_weight=" << tc.horizontal_weight
+                  << ", vertical_weight=" << tc.vertical_weight;
+        if (tc.vertical_weight > tc.horizontal_weight) {
+            std::cout << " (vertical > horizontal)";
+        } else if (tc.horizontal_weight > tc.vertical_weight) {
+            std::cout << " (horizontal > vertical)";
+        } else {
+            std::cout << " (equal weights)";
+        }
+        std::cout << "\n";
+    }
+
+    if (tc.flow == DecodeFlow::AsymmetricWeighted) {
+        generate_syndrome_matrices_asymmetric(error_matrix, syndrome_plaquette, syndrome_cross);
+    } else {
+        generate_syndrome_matrices(error_matrix, syndrome_plaquette, syndrome_cross);
+    }
     print_matrix(error_matrix, "Error matrix before correction:");
     print_matrix(syndrome_plaquette, "Syndrome plaquette:");
     print_matrix(syndrome_cross, "Syndrome cross:");
@@ -456,6 +530,7 @@ int main() {
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
     const std::string error_matrix_path = "error_matrix.json";
+    const std::string correction_gates_path = "correction_gates.png";
 
     if (!write_syndromes_to_json(syndrome_path, syndrome_plaquette, syndrome_cross)) {
         std::cerr << "Failed to write syndrome JSON to " << syndrome_path << "\n";
@@ -466,14 +541,14 @@ int main() {
         return 1;
     }
     if (print_pairings(
-            syndrome_path, error_matrix_path, tc.use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+            syndrome_path, error_matrix_path, use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
         ) != 0) {
         std::cerr << "Failed to print pairing/path details.\n";
         return 1;
     }
 
     if (run_python_decoder(
-            syndrome_path, correction_path, tc.use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
+            syndrome_path, correction_path, use_weighted_decoder, tc.horizontal_weight, tc.vertical_weight
         ) != 0) {
         std::cerr << "Python decoder failed. Check pymatching installation.\n";
         return 1;
@@ -483,9 +558,14 @@ int main() {
         std::cerr << "Failed to read correction matrix from " << correction_path << "\n";
         return 1;
     }
+    if (plot_correction_gates_image(correction_path, correction_gates_path) != 0) {
+        std::cerr << "Failed to create correction-gates image.\n";
+        return 1;
+    }
+    std::cout << "Saved correction-gates image to " << correction_gates_path << "\n";
 
     print_matrix(correction_matrix, "Correction matrix from pymatching:");
-    if (tc.use_weighted_decoder) {
+    if (use_weighted_decoder) {
         print_correction_orientation_summary(correction_matrix);
     }
     apply_correction(error_matrix, correction_matrix);
@@ -493,7 +573,11 @@ int main() {
 
     std::vector<std::vector<int>> residual_syndrome_plaquette(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
     std::vector<std::vector<int>> residual_syndrome_cross(n_syndrome_rows, std::vector<int>(n_syndrome_cols, 0));
-    generate_syndrome_matrices(error_matrix, residual_syndrome_plaquette, residual_syndrome_cross);
+    if (tc.flow == DecodeFlow::AsymmetricWeighted) {
+        generate_syndrome_matrices_asymmetric(error_matrix, residual_syndrome_plaquette, residual_syndrome_cross);
+    } else {
+        generate_syndrome_matrices(error_matrix, residual_syndrome_plaquette, residual_syndrome_cross);
+    }
     print_matrix(residual_syndrome_plaquette, "Residual syndrome plaquette:");
     print_matrix(residual_syndrome_cross, "Residual syndrome cross:");
 
