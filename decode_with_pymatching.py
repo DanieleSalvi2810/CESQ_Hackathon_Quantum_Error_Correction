@@ -22,7 +22,7 @@ def flatten_matrix(matrix: list[list[int]]) -> np.ndarray:
     return np.array([value & 1 for row in matrix for value in row], dtype=np.uint8)
 
 
-def validate_syndromes(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> tuple[int, int]:
+def validate_syndromes(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> int:
     if not syndrome_plaquette or not syndrome_plaquette[0]:
         raise ValueError("syndrome_plaquette is empty")
     if not syndrome_cross or not syndrome_cross[0]:
@@ -37,63 +37,67 @@ def validate_syndromes(syndrome_plaquette: list[list[int]], syndrome_cross: list
         raise ValueError("syndrome_plaquette is ragged")
     if any(len(row) != n_cols for row in syndrome_cross):
         raise ValueError("syndrome_cross is ragged")
-    if n_cols % 2 != 0 or n_rows != n_cols // 2:
-        raise ValueError("expected N_SYNDROME_ROWS = N / 2")
+    if n_rows != n_cols:
+        raise ValueError("expected square syndrome matrices (D x D)")
 
-    return n_rows, n_cols
+    return n_rows
 
 
-def build_x_check_matrix(n: int, n_syndrome_rows: int) -> np.ndarray:
-    n_checks = n_syndrome_rows * n
-    n_qubits = n * n
+def build_x_check_matrix(d: int) -> np.ndarray:
+    n_checks = d * d
+    n_qubit_rows = 2 * d
+    n_qubit_cols = d
+    n_qubits = n_qubit_rows * n_qubit_cols
     h_x = np.zeros((n_checks, n_qubits), dtype=np.uint8)
 
-    for i in range(n):
-        for j in range(n):
-            qubit_index = i * n + j
+    for i in range(n_qubit_rows):
+        for j in range(n_qubit_cols):
+            qubit_index = i * n_qubit_cols + j
             if i % 2 == 0:
                 toggles = [(i // 2, j), (i // 2, j + 1)]
             else:
                 toggles = [((i - 1) // 2, j), ((i + 1) // 2, j)]
 
             for row, col in toggles:
-                row_wrapped = wrap_index(row, n_syndrome_rows)
-                col_wrapped = wrap_index(col, n)
-                check_index = row_wrapped * n + col_wrapped
+                row_wrapped = wrap_index(row, d)
+                col_wrapped = wrap_index(col, d)
+                check_index = row_wrapped * d + col_wrapped
                 h_x[check_index, qubit_index] ^= 1
 
     return h_x
 
 
-def build_z_check_matrix(n: int, n_syndrome_rows: int) -> np.ndarray:
-    n_checks = n_syndrome_rows * n
-    n_qubits = n * n
+def build_z_check_matrix(d: int) -> np.ndarray:
+    n_checks = d * d
+    n_qubit_rows = 2 * d
+    n_qubit_cols = d
+    n_qubits = n_qubit_rows * n_qubit_cols
     h_z = np.zeros((n_checks, n_qubits), dtype=np.uint8)
 
-    for i in range(n):
-        for j in range(n):
-            qubit_index = i * n + j
+    for i in range(n_qubit_rows):
+        for j in range(n_qubit_cols):
+            qubit_index = i * n_qubit_cols + j
             if i % 2 == 0:
                 toggles = [(i // 2 - 1, j), (i // 2, j)]
             else:
                 toggles = [((i - 1) // 2, j - 1), ((i - 1) // 2, j)]
 
             for row, col in toggles:
-                row_wrapped = wrap_index(row, n_syndrome_rows)
-                col_wrapped = wrap_index(col, n)
-                check_index = row_wrapped * n + col_wrapped
+                row_wrapped = wrap_index(row, d)
+                col_wrapped = wrap_index(col, d)
+                check_index = row_wrapped * d + col_wrapped
                 h_z[check_index, qubit_index] ^= 1
 
     return h_z
 
 
 def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: list[list[int]]) -> list[list[int]]:
-    n_syndrome_rows, n = validate_syndromes(syndrome_plaquette, syndrome_cross)
+    d = validate_syndromes(syndrome_plaquette, syndrome_cross)
     syndrome_x = flatten_matrix(syndrome_plaquette)
     syndrome_z = flatten_matrix(syndrome_cross)
 
-    h_x = build_x_check_matrix(n, n_syndrome_rows)
-    h_z = build_z_check_matrix(n, n_syndrome_rows)
+    h_x = build_x_check_matrix(d)
+    h_z = build_z_check_matrix(d)
 
     matching_x = Matching(h_x)
     matching_z = Matching(h_z)
@@ -102,10 +106,12 @@ def decode_with_pymatching(syndrome_plaquette: list[list[int]], syndrome_cross: 
     correction_z = np.array(matching_z.decode(syndrome_z), dtype=np.uint8) & 1
 
     correction_matrix: list[list[int]] = []
-    for i in range(n):
+    n_qubit_rows = 2 * d
+    n_qubit_cols = d
+    for i in range(n_qubit_rows):
         row: list[int] = []
-        for j in range(n):
-            idx = i * n + j
+        for j in range(n_qubit_cols):
+            idx = i * n_qubit_cols + j
             row.append(int(correction_x[idx]) + 2 * int(correction_z[idx]))
         correction_matrix.append(row)
 
