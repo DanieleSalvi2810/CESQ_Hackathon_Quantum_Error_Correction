@@ -9,8 +9,9 @@
 #include <cmath>
 #include <climits>
 
-#define N 6
-#define N_SYNDROME_ROWS (N / 2)
+#define d 3
+#define N d/2
+#define N_SYNDROME_ROWS (d)
 
 int error_matrix[N][N];
 int syndrome_plaquette[N_SYNDROME_ROWS][N];
