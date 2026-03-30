@@ -44,7 +44,7 @@ except ModuleNotFoundError:
     qrcode = None  # Optional dependency for /qr.png endpoint.
 
 
-UI_VERSION = "1.2.5"
+UI_VERSION = "1.2.8"
 
 
 def wrap_index(index: int, size: int) -> int:
@@ -1421,19 +1421,32 @@ def build_page(
 
       const perEdgeDelayMs = 90;
       const drawDurationMs = 320;
-      const startTime = performance.now();
+      const forwardHoldMs = 920;
+      const maxOrderIdx = lines.reduce((acc, item) => Math.max(acc, item.idx), 0);
+      const oneWayMs = maxOrderIdx * perEdgeDelayMs + drawDurationMs;
+      const cycleMs = 2 * oneWayMs + forwardHoldMs;
+      let loopStartTime = performance.now();
 
       const animateFrame = (now) => {
         if (state.pairAnimationTokenBySvg[svgId] !== thisToken) {
           return;
         }
 
-        let hasRunning = false;
+        const elapsed = now - loopStartTime;
+        const phase = elapsed % cycleMs;
+        let mirroredElapsed;
+        if (phase <= oneWayMs) {
+          mirroredElapsed = phase;
+        } else if (phase <= oneWayMs + forwardHoldMs) {
+          mirroredElapsed = oneWayMs;
+        } else {
+          mirroredElapsed = cycleMs - phase;
+        }
+
         for (const item of lines) {
-          const t = (now - startTime - item.idx * perEdgeDelayMs) / drawDurationMs;
+          const t = (mirroredElapsed - item.idx * perEdgeDelayMs) / drawDurationMs;
           if (t <= 0) {
             item.line.setAttribute("stroke-dashoffset", `${item.len}`);
-            hasRunning = true;
             continue;
           }
           if (t >= 1) {
@@ -1441,14 +1454,9 @@ def build_page(
             continue;
           }
           item.line.setAttribute("stroke-dashoffset", `${item.len * (1 - t)}`);
-          hasRunning = true;
         }
 
-        if (hasRunning) {
-          state.pairAnimationFrameBySvg[svgId] = requestAnimationFrame(animateFrame);
-        } else {
-          state.pairAnimationFrameBySvg[svgId] = 0;
-        }
+        state.pairAnimationFrameBySvg[svgId] = requestAnimationFrame(animateFrame);
       };
 
       state.pairAnimationFrameBySvg[svgId] = requestAnimationFrame(animateFrame);
@@ -1529,9 +1537,20 @@ def build_page(
       }
     }
 
-    function applyDistance() {
-      const raw = Number(document.getElementById("distanceInput").value);
-      const d = Math.max(2, Math.min(14, Number.isFinite(raw) ? Math.floor(raw) : state.d));
+    function applyDistance(normalizeInput = false) {
+      const distanceInput = document.getElementById("distanceInput");
+      const raw = Number(distanceInput.value);
+      const minBound = Number(distanceInput.min);
+      const maxBound = Number(distanceInput.max);
+      const minD = Number.isFinite(minBound) ? minBound : 2;
+      const maxD = Number.isFinite(maxBound) ? maxBound : 14;
+      const parsed = Number.isFinite(raw) ? Math.floor(raw) : state.d;
+      const d = Math.max(minD, Math.min(maxD, parsed));
+
+      if (normalizeInput || (Number.isFinite(raw) && (raw < minD || raw > maxD))) {
+        distanceInput.value = String(d);
+      }
+
       state.d = d;
       state.matrix = createZeroMatrix(d);
       state.lastResult = null;
@@ -1640,8 +1659,9 @@ def build_page(
       document.getElementById("clearBtn").addEventListener("click", clearMatrix);
       document.getElementById("randomBtn").addEventListener("click", randomMatrix);
       const distanceInput = document.getElementById("distanceInput");
-      distanceInput.addEventListener("input", applyDistance);
-      distanceInput.addEventListener("change", applyDistance);
+      distanceInput.addEventListener("input", () => applyDistance(false));
+      distanceInput.addEventListener("change", () => applyDistance(true));
+      distanceInput.addEventListener("blur", () => applyDistance(true));
       document.getElementById("decodeBtn").addEventListener("click", runDecode);
       document.getElementById("viewResidualBtn").addEventListener("click", () => {
         if (!state.lastResult) {
