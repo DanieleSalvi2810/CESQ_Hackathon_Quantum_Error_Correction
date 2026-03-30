@@ -44,6 +44,9 @@ except ModuleNotFoundError:
     qrcode = None  # Optional dependency for /qr.png endpoint.
 
 
+UI_VERSION = "1.2.3"
+
+
 def wrap_index(index: int, size: int) -> int:
     return index % size
 
@@ -376,7 +379,13 @@ def make_zero_error_matrix(d: int) -> list[list[int]]:
     return zeros(2 * d, d)
 
 
-def build_page(default_d: int, default_h_weight: float, default_v_weight: float, default_share_url: str) -> str:
+def build_page(
+  default_d: int,
+  default_h_weight: float,
+  default_v_weight: float,
+  default_share_url: str,
+  ui_version: str,
+) -> str:
     html = r"""<!doctype html>
 <html lang="en">
 <head>
@@ -477,6 +486,26 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       margin: 0 0 8px;
       font-size: 1.03rem;
       letter-spacing: .2px;
+    }
+
+    .title-with-version {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .version-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: .72rem;
+      font-weight: 700;
+      letter-spacing: .2px;
+      background: #eaf2ff;
+      color: #1d4ed8;
+      border: 1px solid #bcd3ff;
+      line-height: 1.4;
     }
 
     .controls {
@@ -742,7 +771,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
 
     <div class="grid">
       <section class="card">
-        <h2>Input on the Qubit Graph</h2>
+        <h2 class="title-with-version">Input on the Qubit Graph <span class="version-tag">v__UI_VERSION__</span></h2>
         <div class="controls">
           <div>
             <label for="distanceInput">Code distance (D)</label>
@@ -821,7 +850,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       <section class="card full">
         <h2>Pairing Paths with Animation</h2>
         <label class="pair-controls" for="showOriginalErrorsToggle">
-          <input id="showOriginalErrorsToggle" type="checkbox" />
+          <input id="showOriginalErrorsToggle" type="checkbox" checked />
           Show original errors
         </label>
         <div class="pair-grid">
@@ -1137,6 +1166,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       const svg = document.getElementById(svgId);
       const margin = 26;
       const cell = Math.max(24, Math.min(46, 380 / d));
+      const usePlaquetteCenters = channel === "z";
 
       if (state.pairAnimationFrameBySvg[svgId]) {
         cancelAnimationFrame(state.pairAnimationFrameBySvg[svgId]);
@@ -1157,10 +1187,61 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       svg.innerHTML = "";
 
       const posMap = toPosMap(d, pairingData ? pairingData.positions : {});
+      const toVisualPoint = (p) => {
+        if (!usePlaquetteCenters) {
+          return p;
+        }
+        return { x: p.x + 0.5, y: p.y + 0.5 };
+      };
       const toPx = (p) => ({
         x: margin + p.x * cell,
         y: margin + p.y * cell,
       });
+      const toPairPx = (p) => toPx(toVisualPoint(p));
+
+      const drawReferenceQubitGrid = () => {
+        // Match the top qubit-grid style in the pairing panes.
+        const gridEdges = [];
+        const placeGridEdge = (x1, y1, x2, y2) => {
+          gridEdges.push({ x1, y1, x2, y2 });
+        };
+
+        for (let i = 0; i < 2 * d; i++) {
+          for (let j = 0; j < d; j++) {
+            if (i % 2 === 0) {
+              const row = i / 2;
+              const x1 = margin + j * cell;
+              const y = margin + row * cell;
+              const x2 = margin + (j + 1) * cell;
+              placeGridEdge(x1, y, x2, y);
+              if (j === d - 1) {
+                placeGridEdge(x1 - d * cell, y, x2 - d * cell, y);
+              }
+            } else {
+              const row = (i - 1) / 2;
+              const x = margin + j * cell;
+              const y1 = margin + row * cell;
+              const y2 = margin + (row + 1) * cell;
+              placeGridEdge(x, y1, x, y2);
+              if (row === d - 1) {
+                placeGridEdge(x, y1 - d * cell, x, y2 - d * cell);
+              }
+            }
+          }
+        }
+
+        for (const seg of gridEdges) {
+            svg.appendChild(el("line", {
+              x1: seg.x1,
+              y1: seg.y1,
+              x2: seg.x2,
+              y2: seg.y2,
+              stroke: "#c4ceda",
+              "stroke-width": 5,
+              "stroke-linecap": "round",
+            }));
+        }
+      };
 
       const addToricSegments = (pu, pv, uNode, vNode, pushSegment) => {
         const isGridNode = (n) => Number.isInteger(n) && n >= 0 && n < d * d;
@@ -1169,8 +1250,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
 
         // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
-          const leftGhostX = -0.45;
-          const rightGhostX = d - 0.55;
+          const leftGhostX = usePlaquetteCenters ? -0.95 : -0.45;
+          const rightGhostX = usePlaquetteCenters ? d - 1.05 : d - 0.55;
           if (dx > 0) {
             pushSegment(pu, { x: leftGhostX, y: pu.y });
             pushSegment(pv, { x: rightGhostX, y: pv.y });
@@ -1182,8 +1263,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         }
 
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
-          const topGhostY = -0.45;
-          const bottomGhostY = d - 0.55;
+          const topGhostY = usePlaquetteCenters ? -0.95 : -0.45;
+          const bottomGhostY = usePlaquetteCenters ? d - 1.05 : d - 0.55;
           if (dy > 0) {
             pushSegment(pu, { x: pu.x, y: topGhostY });
             pushSegment(pv, { x: pv.x, y: bottomGhostY });
@@ -1198,9 +1279,11 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         return true;
       };
 
+      drawReferenceQubitGrid();
+
       for (let r = 0; r < d; r++) {
         for (let c = 0; c < d; c++) {
-          const p = toPx({ x: c, y: r });
+          const p = toPairPx({ x: c, y: r });
           svg.appendChild(el("circle", {
             cx: p.x,
             cy: p.y,
@@ -1216,42 +1299,61 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
           return value === 2 || value === 3;
         };
         const overlayColor = channel === "x" ? "#d1495b" : "#2f74d0";
-        const ghostInset = 0.55;
+
+        const addOverlaySegment = (from, to) => {
+          const projectPoint = channel === "z" ? toPairPx : toPx;
+          const a = projectPoint(from);
+          const b = projectPoint(to);
+          svg.appendChild(el("line", {
+            x1: a.x,
+            y1: a.y,
+            x2: b.x,
+            y2: b.y,
+            stroke: overlayColor,
+            "stroke-width": 4.4,
+            "stroke-linecap": "round",
+            "stroke-dasharray": "6 4",
+            opacity: 0.36,
+          }));
+        };
 
         for (let i = 0; i < 2 * d; i++) {
           for (let j = 0; j < d; j++) {
             const value = Number(sourceMatrix[i][j] || 0);
             if (!includeError(value)) continue;
 
-            const addOverlaySegment = (from, to) => {
-              const a = toPx(from);
-              const b = toPx(to);
-              svg.appendChild(el("line", {
-                x1: a.x,
-                y1: a.y,
-                x2: b.x,
-                y2: b.y,
-                stroke: overlayColor,
-                "stroke-width": 4.4,
-                "stroke-linecap": "round",
-                "stroke-dasharray": "6 4",
-                opacity: 0.36,
-              }));
-            };
+            if (channel === "z") {
+              if (i % 2 === 0) {
+                const row = i / 2;
+                const pu = { x: j, y: row };
+                const pv = { x: (j + 1) % d, y: row };
+                const uNode = pu.y * d + pu.x;
+                const vNode = pv.y * d + pv.x;
+                addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
+              } else {
+                const row = (i - 1) / 2;
+                const pu = { x: j, y: row };
+                const pv = { x: j, y: (row + 1) % d };
+                const uNode = pu.y * d + pu.x;
+                const vNode = pv.y * d + pv.x;
+                addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
+              }
+              continue;
+            }
 
             if (i % 2 === 0) {
               const row = i / 2;
               if (j === d - 1) {
-                addOverlaySegment({ x: j, y: row }, { x: d - ghostInset, y: row });
-                addOverlaySegment({ x: 0, y: row }, { x: -1 + ghostInset, y: row });
+                addOverlaySegment({ x: j, y: row }, { x: d, y: row });
+                addOverlaySegment({ x: 0, y: row }, { x: -1, y: row });
               } else {
                 addOverlaySegment({ x: j, y: row }, { x: j + 1, y: row });
               }
             } else {
               const row = (i - 1) / 2;
               if (row === d - 1) {
-                addOverlaySegment({ x: j, y: row }, { x: j, y: d - ghostInset });
-                addOverlaySegment({ x: j, y: 0 }, { x: j, y: -1 + ghostInset });
+                addOverlaySegment({ x: j, y: row }, { x: j, y: d });
+                addOverlaySegment({ x: j, y: 0 }, { x: j, y: -1 });
               } else {
                 addOverlaySegment({ x: j, y: row }, { x: j, y: row + 1 });
               }
@@ -1271,8 +1373,8 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
         const vNode = Number(v);
 
         const addAnimatedLine = (from, to, orderIdx) => {
-          const a = toPx(from);
-          const b = toPx(to);
+          const a = toPairPx(from);
+          const b = toPairPx(to);
           const len = Math.hypot(b.x - a.x, b.y - a.y);
           const line = el("line", {
             x1: a.x,
@@ -1299,7 +1401,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
       });
 
       posMap.forEach((p, node) => {
-        const q = toPx(p);
+        const q = toPairPx(p);
         const isActive = activeNodes.has(node);
         svg.appendChild(el("circle", {
           cx: q.x,
@@ -1563,6 +1665,7 @@ def build_page(default_d: int, default_h_weight: float, default_v_weight: float,
     html = html.replace("__DEFAULT_HW__", str(default_h_weight))
     html = html.replace("__DEFAULT_VW__", str(default_v_weight))
     html = html.replace("__DEFAULT_SHARE_URL__", json.dumps(default_share_url))
+    html = html.replace("__UI_VERSION__", ui_version)
     return html
 
 
@@ -1761,6 +1864,7 @@ def main() -> int:
         default_h_weight=args.horizontal_weight,
         default_v_weight=args.vertical_weight,
         default_share_url=lan_url,
+      ui_version=UI_VERSION,
     )
 
     DemoHandler.page_html = page
