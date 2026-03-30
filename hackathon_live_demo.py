@@ -1326,19 +1326,13 @@ def build_page(
               if (i % 2 === 0) {
                 const row = i / 2;
                 // Dual-lattice orientation: horizontal physical edge -> vertical center link.
-                const pu = { x: j, y: (row - 1 + d) % d };
-                const pv = { x: j, y: row };
-                const uNode = pu.y * d + pu.x;
-                const vNode = pv.y * d + pv.x;
-                addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
+                // Use local adjacent plaquettes (no modulo) so the rotated segment crosses this exact edge.
+                addOverlaySegment({ x: j, y: row - 1 }, { x: j, y: row });
               } else {
                 const row = (i - 1) / 2;
                 // Dual-lattice orientation: vertical physical edge -> horizontal center link.
-                const pu = { x: (j - 1 + d) % d, y: row };
-                const pv = { x: j, y: row };
-                const uNode = pu.y * d + pu.x;
-                const vNode = pv.y * d + pv.x;
-                addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
+                // Use local adjacent plaquettes (no modulo) so the rotated segment crosses this exact edge.
+                addOverlaySegment({ x: j - 1, y: row }, { x: j, y: row });
               }
               continue;
             }
