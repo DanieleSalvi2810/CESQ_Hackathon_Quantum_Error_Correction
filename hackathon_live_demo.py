@@ -44,7 +44,7 @@ except ModuleNotFoundError:
     qrcode = None  # Optional dependency for /qr.png endpoint.
 
 
-UI_VERSION = "1.2.3"
+UI_VERSION = "1.2.5"
 
 
 def wrap_index(index: int, size: int) -> int:
@@ -1325,15 +1325,17 @@ def build_page(
             if (channel === "z") {
               if (i % 2 === 0) {
                 const row = i / 2;
-                const pu = { x: j, y: row };
-                const pv = { x: (j + 1) % d, y: row };
+                // Dual-lattice orientation: horizontal physical edge -> vertical center link.
+                const pu = { x: j, y: (row - 1 + d) % d };
+                const pv = { x: j, y: row };
                 const uNode = pu.y * d + pu.x;
                 const vNode = pv.y * d + pv.x;
                 addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
               } else {
                 const row = (i - 1) / 2;
-                const pu = { x: j, y: row };
-                const pv = { x: j, y: (row + 1) % d };
+                // Dual-lattice orientation: vertical physical edge -> horizontal center link.
+                const pu = { x: (j - 1 + d) % d, y: row };
+                const pv = { x: j, y: row };
                 const uNode = pu.y * d + pu.x;
                 const vNode = pv.y * d + pv.x;
                 addToricSegments(pu, pv, uNode, vNode, addOverlaySegment);
@@ -1637,6 +1639,9 @@ def build_page(
 
       document.getElementById("clearBtn").addEventListener("click", clearMatrix);
       document.getElementById("randomBtn").addEventListener("click", randomMatrix);
+      const distanceInput = document.getElementById("distanceInput");
+      distanceInput.addEventListener("input", applyDistance);
+      distanceInput.addEventListener("change", applyDistance);
       document.getElementById("decodeBtn").addEventListener("click", runDecode);
       document.getElementById("viewResidualBtn").addEventListener("click", () => {
         if (!state.lastResult) {
