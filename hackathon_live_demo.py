@@ -44,7 +44,7 @@ except ModuleNotFoundError:
     qrcode = None  # Optional dependency for /qr.png endpoint.
 
 
-UI_VERSION = "1.2.9"
+UI_VERSION = "1.2.10"
 
 
 def wrap_index(index: int, size: int) -> int:
@@ -958,9 +958,9 @@ def build_page(
       const bg = el("rect", { x: viewBoxMinX, y: viewBoxMinY, width: viewBoxWidth, height: viewBoxHeight, fill: "#f9fbff" });
       svg.appendChild(bg);
 
-      // Draw circles first
-      for (let r = 0; r <= d; r++) {
-        for (let c = 0; c <= d; c++) {
+      // Draw only torus vertices (d x d). Using d+1 created an isolated corner dot.
+      for (let r = 0; r < d; r++) {
+        for (let c = 0; c < d; c++) {
           svg.appendChild(el("circle", {
             cx: margin + c * cell,
             cy: margin + r * cell,
@@ -1250,8 +1250,8 @@ def build_page(
 
         // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
-          const leftGhostX = usePlaquetteCenters ? -0.95 : -0.45;
-          const rightGhostX = usePlaquetteCenters ? d - 0.05 : d + 0.45;
+          const leftGhostX = usePlaquetteCenters ? -1 : -1;
+          const rightGhostX = usePlaquetteCenters ? d-0.2 : d;
           if (dx > 0) {
             pushSegment(pu, { x: leftGhostX, y: pu.y });
             pushSegment(pv, { x: rightGhostX, y: pv.y });
@@ -1263,8 +1263,8 @@ def build_page(
         }
 
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
-          const topGhostY = usePlaquetteCenters ? -0.95 : -0.45;
-          const bottomGhostY = usePlaquetteCenters ? d - 0.05 : d + 0.45;
+          const topGhostY = usePlaquetteCenters ? -1 : -1;
+          const bottomGhostY = usePlaquetteCenters ? d-0.2: d;
           if (dy > 0) {
             pushSegment(pu, { x: pu.x, y: topGhostY });
             pushSegment(pv, { x: pv.x, y: bottomGhostY });
@@ -1420,7 +1420,7 @@ def build_page(
       }
 
       const perEdgeDelayMs = 90;
-      const drawDurationMs = 320;
+      const drawDurationMs = 520;
       const forwardHoldMs = 1520;
       const maxOrderIdx = lines.reduce((acc, item) => Math.max(acc, item.idx), 0);
       const oneWayMs = maxOrderIdx * perEdgeDelayMs + drawDurationMs;
