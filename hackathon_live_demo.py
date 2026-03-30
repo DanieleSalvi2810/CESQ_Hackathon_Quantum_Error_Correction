@@ -44,7 +44,7 @@ except ModuleNotFoundError:
     qrcode = None  # Optional dependency for /qr.png endpoint.
 
 
-UI_VERSION = "1.2.8"
+UI_VERSION = "1.2.9"
 
 
 def wrap_index(index: int, size: int) -> int:
@@ -1251,7 +1251,7 @@ def build_page(
         // Draw toric wrap-around edges as two short segments that exit and re-enter the grid.
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dx) === d - 1 && dy === 0) {
           const leftGhostX = usePlaquetteCenters ? -0.95 : -0.45;
-          const rightGhostX = usePlaquetteCenters ? d - 1.05 : d - 0.55;
+          const rightGhostX = usePlaquetteCenters ? d - 0.05 : d + 0.45;
           if (dx > 0) {
             pushSegment(pu, { x: leftGhostX, y: pu.y });
             pushSegment(pv, { x: rightGhostX, y: pv.y });
@@ -1264,7 +1264,7 @@ def build_page(
 
         if (isGridNode(uNode) && isGridNode(vNode) && Math.abs(dy) === d - 1 && dx === 0) {
           const topGhostY = usePlaquetteCenters ? -0.95 : -0.45;
-          const bottomGhostY = usePlaquetteCenters ? d - 1.05 : d - 0.55;
+          const bottomGhostY = usePlaquetteCenters ? d - 0.05 : d + 0.45;
           if (dy > 0) {
             pushSegment(pu, { x: pu.x, y: topGhostY });
             pushSegment(pv, { x: pv.x, y: bottomGhostY });
@@ -1421,7 +1421,7 @@ def build_page(
 
       const perEdgeDelayMs = 90;
       const drawDurationMs = 320;
-      const forwardHoldMs = 920;
+      const forwardHoldMs = 1520;
       const maxOrderIdx = lines.reduce((acc, item) => Math.max(acc, item.idx), 0);
       const oneWayMs = maxOrderIdx * perEdgeDelayMs + drawDurationMs;
       const cycleMs = 2 * oneWayMs + forwardHoldMs;
