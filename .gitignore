@@ -2,3 +2,8 @@ build/
 .venv/
 .env/
 _pycache_/
+*.gif
+
+decoder/*.png
+decoder/*.gif
+decoder/*.json
