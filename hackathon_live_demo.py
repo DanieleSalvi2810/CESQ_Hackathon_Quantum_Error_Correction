@@ -1326,13 +1326,23 @@ def build_page(
               if (i % 2 === 0) {
                 const row = i / 2;
                 // Dual-lattice orientation: horizontal physical edge -> vertical center link.
-                // Use local adjacent plaquettes (no modulo) so the rotated segment crosses this exact edge.
-                addOverlaySegment({ x: j, y: row - 1 }, { x: j, y: row });
+                // Use local adjacent plaquettes and mirror toric wraps on both sides.
+                if (row === 0) {
+                  addOverlaySegment({ x: j, y: -1 }, { x: j, y: 0 });
+                  addOverlaySegment({ x: j, y: d - 1 }, { x: j, y: d - 0.2 });
+                } else {
+                  addOverlaySegment({ x: j, y: row - 1 }, { x: j, y: row });
+                }
               } else {
                 const row = (i - 1) / 2;
                 // Dual-lattice orientation: vertical physical edge -> horizontal center link.
-                // Use local adjacent plaquettes (no modulo) so the rotated segment crosses this exact edge.
-                addOverlaySegment({ x: j - 1, y: row }, { x: j, y: row });
+                // Use local adjacent plaquettes and mirror toric wraps on both sides.
+                if (j === 0) {
+                  addOverlaySegment({ x: -1, y: row }, { x: 0, y: row });
+                  addOverlaySegment({ x: d - 1, y: row }, { x: d - 0.2, y: row });
+                } else {
+                  addOverlaySegment({ x: j - 1, y: row }, { x: j, y: row });
+                }
               }
               continue;
             }
