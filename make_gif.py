@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
+import argparse
 
 # 1. Torus Parameters
 R = 3.0  # Distance from center of hole to center of tube
@@ -149,7 +150,11 @@ def update(frame):
     arrow_artists.extend([l3, l4])
     
 # 4. Render and Save
-print("Rendering GIF... This may take ~10 seconds.")
+parser = argparse.ArgumentParser(description='Generate toric loop animation GIF')
+parser.add_argument('--dpi', type=int, default=100, help='DPI for the saved GIF (default: 100)')
+args = parser.parse_args()
+
+print(f"Rendering GIF at {args.dpi} DPI... This may take ~10 seconds.")
 ani = FuncAnimation(fig, update, frames=np.arange(0, total_frames), interval=50)
-ani.save('toric_loops.gif', writer=PillowWriter(fps=20))
-print("Done! Check your folder for 'toric_loops.gif'.")
+ani.save('toric_loops.gif', writer=PillowWriter(fps=20), dpi=args.dpi)
+print("Done! Check out 'toric_loops.gif'.")
