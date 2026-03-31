@@ -42,6 +42,51 @@ python3 hackathon_live_demo.py
 
 If `qrcode[pil]` is installed, a QR endpoint is automatically enabled.
 
+## Expose the Demo with cloudflared
+
+If your audience is not on the same Wi-Fi, create a temporary public HTTPS URL with Cloudflare Tunnel.
+
+### 1. Install `cloudflared`
+
+Linux (Debian/Ubuntu):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y cloudflared
+```
+
+If your distro package is unavailable, install from Cloudflare docs:
+https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+### 2. Run the local demo server
+
+```bash
+python3 hackathon_live_demo.py --host 127.0.0.1 --port 8000
+```
+
+### 3. Start the tunnel in another terminal
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+`cloudflared` will print a public URL like:
+
+```text
+https://random-words.trycloudflare.com
+```
+
+### 4. Use that URL in the UI share panel
+
+- Paste the `https://...trycloudflare.com` URL into the Share URL field
+- Click Generate QR
+- Let attendees scan and open the live demo from any network
+
+Notes:
+- Keep both processes running during the demo (`hackathon_live_demo.py` and `cloudflared`)
+- Free quick tunnels are ephemeral; URL changes each run
+- Latency is slightly higher than LAN mode, but usually fine for demos
+
 ## Launch Options
 
 `hackathon_live_demo.py` supports:
@@ -142,3 +187,8 @@ These are useful for offline experiments, but the website experience is centered
 
 - Port already in use:
 	- Start with another port, for example `--port 8010`
+
+- cloudflared tunnel not reachable:
+	- Verify the server is running locally first at `http://127.0.0.1:8000/`
+	- Restart tunnel: `cloudflared tunnel --url http://127.0.0.1:8000`
+	- If needed, use another local port and match it in both commands
