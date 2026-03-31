@@ -2,6 +2,10 @@ build/
 .venv/
 .env/
 _pycache_/
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*/*/*/__pycache__/
 *.gif
 
 decoder/*.png
