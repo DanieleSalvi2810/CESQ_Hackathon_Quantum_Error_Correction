@@ -5,7 +5,9 @@
 #include <iterator>
 #include <stdio.h>
 #include <string>
+#include <tuple>
 #include <vector>
+#include <iostream>
 
 #define D 4
 #define N (D * 2)
@@ -242,6 +244,401 @@ int run_python_decoder(const std::string &syndrome_path, const std::string &corr
     return std::system(cmd.c_str());
 }
 
+
+std::tuple<int, int> same_right(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    return std::make_tuple(i, j+1);
+}
+
+std::tuple<int, int> same_left(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    return std::make_tuple(i, j-1);
+}
+
+std::tuple<int, int> same_up(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    return std::make_tuple(i-2, j);
+}
+
+std::tuple<int, int> same_down(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    return std::make_tuple(i+2, j);
+}
+
+std::tuple<int, int> different_down_right(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    if (i % 2 != 0){
+        return std::make_tuple(i+1, j);
+    }
+    return std::make_tuple(i+1, j+1);
+}
+
+std::tuple<int, int> different_down_left(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    if (i % 2 != 0){
+        return std::make_tuple(i+1, j-1);
+    }
+    return std::make_tuple(i+1, j);
+}
+
+std::tuple<int, int> different_up_left(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    if (i % 2 != 0){
+        return std::make_tuple(i-1, j-1);
+    }
+    return std::make_tuple(i-1, j);
+}
+
+std::tuple<int, int> different_up_right(std::tuple<int, int> position){
+    int i, j;
+    std::tie(i, j) = position;
+    if (i % 2 != 0){
+        return std::make_tuple(i-1, j);
+    }
+    return std::make_tuple(i-1, j+1);
+}
+
+
+void insert_in_path(std::tuple<int, int> position, std::vector<std::tuple<int, int>> &path){
+    //insert position in path, update error_matrix and syndrome matrices accordingly
+    path.push_back(position);
+}
+
+void remove_errors(std::vector<std::tuple<int, int>> &path){
+    for (int i = 0; i < path.size(); i++){
+        //remove error in position path[i], update error_matrix and syndrome matrices accordingly
+        const auto &[row, col] = path[i];
+        error_matrix[row][col] = 0;
+
+    }
+}
+
+
+int check_visited(std::tuple<int, int> position, std::vector<std::tuple<int, int>> &path){
+    for (int i = path.size() - 1; i >= 0; i--){
+        if (std::get<0>(path[i]) == std::get<0>(position) && std::get<1>(path[i]) == std::get<1>(position)){
+            return i;
+        }
+    }
+    return -1;
+}
+
+
+
+std::tuple<int, int> choose_next(std::tuple<int, int> position, int error_code, std::string &momentum, std::vector<std::tuple<int, int>> &path){
+    //choose next position in path, according to the error code and the current position
+    //return (-1, -1) if cannot find next position
+    const auto matches_error = [error_code](const std::tuple<int, int> &candidate) {
+        const auto &[row, col] = candidate;
+        return error_matrix[row][col] == error_code;
+    };
+
+    if (momentum == "down") {
+        std::tuple<int, int> guess;
+
+
+        //1- down left
+        guess = different_down_left(position);
+        std::tuple<int, int> guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                momentum = "down";
+                std::cout << "down left" << std::endl;
+                return guess;
+            }
+        }
+
+        //2. down_right
+        guess = different_down_right(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                momentum = "down";
+                std::cout << "down right" << std::endl;
+                return guess;
+            }
+        }
+
+        //3. down
+        guess = same_down(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                momentum = "down";
+                std::cout << "down" << std::endl;
+                return guess;
+            }
+        }
+
+        //4. left
+        guess = same_left(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "left" << std::endl;
+                return guess;
+            }
+        }
+
+        //5. right
+        guess = same_right(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "right" << std::endl;
+                return guess;
+            }
+        }
+
+        //6. up_left
+        guess = different_up_left(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "up left" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+        }
+
+        //7. up_right
+        guess = different_up_right(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                    
+                std::cout << "up right" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+        }
+
+        //8. up
+        guess = same_up(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "up" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+        }
+
+
+        return std::make_tuple(-1, -1);
+
+        
+    } else if (momentum == "up") {
+
+        //1. down_right
+        std::tuple<int, int> guess = different_down_right(position);
+        std::tuple<int, int> guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "down right" << std::endl;
+                momentum = "down";
+                return guess;
+            }
+        }
+
+        //2. down_left
+        guess = different_down_left(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "down left" << std::endl;
+                momentum = "down";
+                return guess;
+            }
+        }
+
+        //3. down
+        guess = same_down(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "down" << std::endl;
+                momentum = "down";
+                return guess;
+            }
+
+        }
+
+        //4. right
+        guess = same_right(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "right" << std::endl;
+                return guess;
+            }
+        }
+
+        //5. left
+        guess = same_left(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+
+                std::cout << "left" << std::endl;
+                return guess;
+            }
+        }
+
+        //6 up_right
+        guess = different_up_right(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "up right" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+        }
+
+        //7 up_left
+        guess = different_up_left(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)){
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "up left" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+
+        }
+
+        //8. up
+        guess = same_up(position);
+        guess_wrapped = std::make_tuple(wrap_index(std::get<0>(guess), N), wrap_index(std::get<1>(guess), D) );
+        if (matches_error(guess_wrapped)) {
+            if (check_visited(guess_wrapped, path) == -1){
+                std::cout << "up" << std::endl;
+                momentum = "up";
+                return guess;
+            }
+
+        }
+
+        return std::make_tuple(-1, -1);
+
+    } else throw std::runtime_error("Momentum not valid");
+
+}
+
+std::tuple<int, int, int> find_first_error(int error_code){
+    bool first_found = false;
+    int first_i = -1, first_j = -1;
+    int number_of_errors = 0;
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < D; j++){
+            if (error_matrix[i][j] == error_code) {
+                if (!first_found) {                
+                    first_i = i;
+                    first_j = j;
+                    first_found = true;
+                }
+                number_of_errors += 1;
+            }
+        }
+    }
+    return std::make_tuple(first_i, first_j, number_of_errors);
+}
+
+
+int check_trivial_loop(const int error_code){
+    if (error_code <= 0 || error_code > 3) throw std::runtime_error("Error_code not valid");
+    std::vector<std::tuple<int, int>> path;
+    std::tuple<int, int> next_wrapped;
+    std::tuple<int, int> first_error;
+    int number_of_errors = 0;
+    std::string momentum = "down"; 
+    bool first_found = false;
+
+    std::tie(std::get<0>(first_error), std::get<1>(first_error), number_of_errors) = find_first_error(error_code);
+    next_wrapped = first_error;
+
+
+    std::cout << "Number of errors: " << number_of_errors << std::endl;
+    std::cout << "Starting position: (" << std::get<0>(next_wrapped) << ", " << std::get<1>(next_wrapped) << ")" << std::endl;
+
+    bool found_loop = true;
+    int iter = 0;
+    int pacman_effect_count_vertical = 0;
+    int pacman_effect_count_horizontal = 0;
+    int non_trivial_vertical_loop_count = 0;
+    int non_trivial_horizontal_loop_count = 0;
+
+    while (number_of_errors > 0 && iter < 100) {
+        iter ++;
+        if (found_loop) {
+            std::tie(std::get<0>(first_error), std::get<1>(first_error), number_of_errors) = find_first_error(error_code);
+
+            found_loop = false;
+        }
+
+
+
+        std::tuple<int, int> next = choose_next(next_wrapped, error_code, momentum, path);
+        //cannot procede, error in code, 
+        next_wrapped = std::make_tuple(wrap_index(std::get<0>(next), N), wrap_index(std::get<1>(next), D) );
+
+        if (std::get<0>(next_wrapped) == -1 || std::get<1>(next_wrapped) == -1) throw std::runtime_error("Error in code, cannot find next error in path, returned (-1,-1)");
+
+        std::cout << "Chosen next: (" << std::get<0>(next_wrapped) << ", " << std::get<1>(next_wrapped) << ")" << std::endl;
+        insert_in_path(next_wrapped, path);
+        if (std::get<0>(next) != std::get<0>(next_wrapped)){
+            pacman_effect_count_vertical ++;
+        }
+
+        if (std::get<1>(next) != std::get<1>(next_wrapped)){
+            pacman_effect_count_horizontal ++;
+        }
+        if (std::get<0>(next_wrapped) == std::get<0>(first_error) && std::get<1>(next_wrapped) == std::get<1>(first_error)){
+            //non trivial loop
+            if (pacman_effect_count_vertical % 2 == 1) {
+                non_trivial_vertical_loop_count ++;
+            } 
+            if (pacman_effect_count_horizontal % 2 == 1) {
+                non_trivial_horizontal_loop_count ++;
+            }
+
+            remove_errors(path);
+            number_of_errors -= path.size();
+            path.clear();
+            found_loop = true;
+        }
+
+    }
+
+    if (non_trivial_vertical_loop_count % 2 == 1 && non_trivial_horizontal_loop_count % 2 == 1) {
+        std::cout << "Non trivial vertical and horizontal loop found, horizontal count: " \
+         << non_trivial_horizontal_loop_count << std::endl << "vertical count: " << non_trivial_vertical_loop_count << std::endl;
+        return -1;
+    }
+
+    if (non_trivial_vertical_loop_count % 2 == 1) {
+        std::cout << "Non trivial vertical loop found, count: " << non_trivial_vertical_loop_count << std::endl;
+        return -1;
+    }
+
+    if (non_trivial_horizontal_loop_count % 2 == 1) {
+        std::cout << "Non trivial horizontal loop found, count: " << non_trivial_horizontal_loop_count << std::endl;
+        return -1;
+    }
+
+    return 0;
+}
+
+ 
 int main() {
     const std::string syndrome_path = "syndrome.json";
     const std::string correction_path = "correction.json";
@@ -256,10 +653,16 @@ int main() {
     }
 
     // Esempio deterministico; puoi sostituire con generate_random_error_matrix(px, pz)
-    error_matrix[1][1] = 3;
-    error_matrix[1][3] = 3;
-    error_matrix[3][1] = 3;
-    error_matrix[3][3] = 3;
+    error_matrix[0][0] = 1;
+    error_matrix[2][0] = 1;
+    error_matrix[3][1] = 1;
+    error_matrix[4][1] = 1;
+
+    error_matrix[0][2] = 1;
+    error_matrix[2][2] = 1;
+    error_matrix[3][3] = 1;
+    error_matrix[4][3] = 1;
+
 
 
     // generate_random_error_matrix(px, pz);
@@ -307,6 +710,7 @@ int main() {
 
     print_matrix(correction_matrix, "Correction matrix from pymatching:");
     apply_correction();
+
     print_matrix(error_matrix, "Residual matrix after applying correction:");
 
     if (use_asymmetric_weighted_mode) {
@@ -314,6 +718,13 @@ int main() {
     } else {
         generate_syndrome_matrices();
     }
+    
+    check_trivial_loop(1);
+    check_trivial_loop(2);
+
+    print_matrix(error_matrix, "Residual matrix after removing trivial loops:");
+
+    generate_syndrome_matrices();
     print_matrix(syndrome_plaquette, "Residual syndrome plaquette:");
     print_matrix(syndrome_cross, "Residual syndrome cross:");
 

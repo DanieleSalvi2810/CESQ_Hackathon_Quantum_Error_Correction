@@ -39,7 +39,7 @@ struct TestCase {
 };
 
 // Cambia solo questa variabile per scegliere il test da eseguire.
-static constexpr size_t ACTIVE_TEST_CASE = 0;
+static constexpr size_t ACTIVE_TEST_CASE = 6;
 
 static const std::vector<TestCase> TEST_CASES = {
     // 0
@@ -135,6 +135,28 @@ static const std::vector<TestCase> TEST_CASES = {
         1.0,
         3.0,
         {},
+    },
+    // 6
+    {
+        "sym_federico",
+        4,
+        DecodeFlow::SymmetricNonWeighted,
+        ErrorMode::Manual,
+        0.0,
+        0.0,
+        -1,
+        1.0,
+        1.0,
+        {
+            {0, 0, 1},
+            {2, 0, 1},
+            {3, 1, 1},
+            {4, 1, 1},
+            {0, 2, 1},
+            {2, 2, 1},
+            {3, 3, 1},
+            {4, 3, 1},
+        },
     },
 };
 
