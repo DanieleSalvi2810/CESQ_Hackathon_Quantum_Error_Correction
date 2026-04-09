@@ -10,6 +10,13 @@ Beamer slides for our **QIF Challenge 1** presentation on **quantum error correc
 
 ---
 
+## Interactive demo
+
+
+<p align="center">
+  <a href="https://cesq-hackathon-toric-codes-for-quantum.onrender.com/">Open the demo</a>
+</p>
+
 ## 1. From stabilizers to syndrome extraction
 
 
@@ -119,36 +126,8 @@ Global, non-contractible loops wrap around the topology and therefore implement 
 
 ---
 
-## Interactive demo
 
 
-<p align="center">
-  <a href="https://cesq-hackathon-toric-codes-for-quantum.onrender.com/">Open the demo</a>
-</p>
-
----
-
-<details>
-<summary>Extra static slides</summary>
-
-<br>
-
-<p align="center">
-  <img src="assets/readme/tmp/slide-1.png" width="900" alt="Title slide">
-</p>
-
-<p align="center">
-  <img src="assets/readme/tmp/slide-6.png" width="900" alt="Toric code overview">
-</p>
-
-<p align="center">
-  <img src="assets/readme/tmp/slide-51.png" width="900" alt="Interactive demo QR">
-</p>
-
-</details>
-
-
----
 
 # CESQ Hackathon - Quantum Error Correction Live Demo
 
